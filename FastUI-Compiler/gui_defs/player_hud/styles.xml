@@ -1,0 +1,30 @@
+<styles>
+    <style id="primary_button">
+        <property name="bg_color" value="#3D85E0"/>
+        <property name="bg_hover" value="#5BA3F0"/>
+        <property name="text_color" value="#FFFFFF"/>
+        <property name="border_radius" value="6"/>
+    </style>
+
+    <style id="danger_button">
+        <property name="bg_color" value="#E74C3C"/>
+        <property name="bg_hover" value="#FF5B4A"/>
+        <property name="text_color" value="#FFFFFF"/>
+    </style>
+
+    <style id="hud_panel">
+        <property name="bg_color" value="#1E1E24E0"/>
+        <property name="border_radius" value="8"/>
+        <property name="padding" value="[12]"/>
+    </style>
+
+    <default type="button">
+        <property name="height" value="32"/>
+        <property name="border_radius" value="4"/>
+    </default>
+
+    <default type="text">
+        <property name="color" value="#E0E0E0"/>
+        <property name="size" value="14"/>
+    </default>
+</styles>

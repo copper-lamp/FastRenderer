@@ -1,0 +1,44 @@
+<window label="玩家 HUD" width="300" height="360" style="hud_panel" id="player_hud">
+
+    <row spacing="12">
+        <image texture="avatar" width="60" height="60" radius="30"/>
+        <column>
+            <text value="玩家属性" color="#FFD700" size="18" weight="bold"/>
+            <text ref="player_name" color="#AAAAAA" size="12"/>
+        </column>
+    </row>
+
+    <separator/>
+
+    <use id="value_display" name="生命值" ref="health" color="#FF4444"/>
+    <use id="value_display" name="魔力值" ref="mana" color="#4488FF"/>
+    <use id="value_display" name="体力值" ref="stamina" color="#44FF44"/>
+
+    <separator/>
+
+    <!-- 低血量警告 (条件渲染) -->
+    <row v_if="{health < 20}" bg_color="#FF000020" padding="[4,8]" border_radius="4">
+        <image texture="icon_health" width="16" height="16"/>
+        <text value="⚠ 生命值过低！" color="#FF0000" weight="bold"/>
+    </row>
+
+    <!-- 道具快捷栏 (列表渲染) -->
+    <row spacing="4" v_for="(item, idx) in hotbar_items" v_for_empty="empty_row">
+        <button id="slot_{idx}" width="36" height="36" bg_color="#FFFFFF">
+            <image texture="{item.icon}" width="28" height="28"/>
+            <text value="{item.count}" align="bottom_right" font_size="10"/>
+        </button>
+    </row>
+
+    <separator/>
+
+    <row spacing="8">
+        <button id="btn_settings" label="设置" width="80" style="primary_button"
+                on_click="open_settings"/>
+        <button id="btn_skills" label="技能" width="80" style="primary_button"
+                on_click="open_skills"/>
+        <button id="btn_close" label="关闭" width="80" style="danger_button"
+                on_click="close_hud"/>
+    </row>
+
+</window>

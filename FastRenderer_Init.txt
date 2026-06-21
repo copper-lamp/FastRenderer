@@ -1,0 +1,5 @@
+[14:19:19] FastRenderer::load() started
+[14:19:19] FastRenderer::load() completed
+[14:19:23] FastRenderer::enable() started
+[14:19:23]   [1/6] gui_defs obtained
+[14:19:23]   [2/6] HotReload init OK

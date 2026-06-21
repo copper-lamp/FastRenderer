@@ -1,0 +1,12 @@
+<template id="value_display" params="name, ref, color">
+    <row spacing="6">
+        <text value="{name}:" color="#888888" width="70"/>
+        <text ref="{ref}" color="{color}" weight="bold"/>
+    </row>
+</template>
+
+<template id="icon_button" params="icon, label, color">
+    <button width="44" height="44" bg_color="{color}" border_radius="8">
+        <image texture="{icon}" width="28" height="28"/>
+    </button>
+</template>

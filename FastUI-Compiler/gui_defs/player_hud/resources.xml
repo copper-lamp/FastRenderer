@@ -1,0 +1,9 @@
+<resources>
+    <texture id="icon_health" path="textures/ui/health.png"/>
+    <texture id="icon_mana" path="textures/ui/mana.png"/>
+    <texture id="icon_stamina" path="textures/ui/stamina.png"/>
+    <texture id="avatar" path="plugins/player_hud/avatar.png"/>
+    <texture id="gradient_bar" type="gradient" direction="horizontal"
+             colors="#FF0000,#FFD700,#00FF00" width="200" height="16"/>
+    <audio id="click" path="sounds/ui/click.ogg" volume="0.5"/>
+</resources>

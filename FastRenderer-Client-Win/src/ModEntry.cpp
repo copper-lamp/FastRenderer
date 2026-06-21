@@ -3,28 +3,31 @@
 #include <DX11Hook.h>
 #include <InputBlocker.h>
 #include <gui/GuiService.h>
+#include <gui/JsonGuiRenderer.h>
 #include <input/KeybindService.h>
 #include <theme/ThemeManager.h>
 #include <hotload/HotReloadService.h>
 #include <layout/DockLayoutService.h>
 #include <VerificationUI.h>
+#include <PacketBridge.h>
+#include <MinHook.h>
 #include <windows.h>
-#include <fstream>
 #include <chrono>
 #include <ctime>
+#include <cstdio>
 
 namespace fast_renderer {
 
 inline void logInit(const char* msg) {
-    std::ofstream out("FastRenderer_Init.txt", std::ios::app);
-    auto now = std::chrono::system_clock::now();
-    auto tt = std::chrono::system_clock::to_time_t(now);
-    char ts[32] = {};
-    tm local = {};
-    localtime_s(&local, &tt);
-    std::strftime(ts, sizeof(ts), "%H:%M:%S", &local);
-    out << "[" << ts << "] " << msg << "\n";
-    out.flush();
+    FILE* flog = nullptr;
+    if (fopen_s(&flog, "FastRenderer_Init.txt", "a") == 0 && flog) {
+        auto now = std::chrono::system_clock::now();
+        auto tt = std::chrono::system_clock::to_time_t(now);
+        tm local = {};
+        localtime_s(&local, &tt);
+        fprintf(flog, "[%02d:%02d:%02d] %s\n", local.tm_hour, local.tm_min, local.tm_sec, msg);
+        fclose(flog);
+    }
 }
 
 inline bool g_lastNState = false;
@@ -48,7 +51,20 @@ public:
             return VerificationUI::isActive();
         });
 
+        JsonGuiRenderer::setEventCallback([](const std::string& eventName) {
+            if (!eventName.empty()) {
+                fast_packets::ClientGuiEventPacket pkt;
+                pkt.guiId = "local";
+                pkt.controlId = eventName;
+                pkt.eventType = "click";
+                pkt.sendBroadcast();
+            }
+        });
+
         DX11Hook::setRenderCallback([]() {
+            // Apply pending theme once ImGui context is ready
+            ThemeManager::applyPendingTheme();
+
             bool nDown = (GetAsyncKeyState(0x4E) & 0x8000) != 0;
             if (nDown && !g_lastNState) {
                 VerificationUI::g_showConsole = !VerificationUI::g_showConsole;
@@ -70,19 +86,31 @@ public:
     bool enable() {
         logInit("FastRenderer::enable() started");
 
+        // Initialize MinHook first so all MH_CreateHook calls are safe
+        MH_Initialize();
+
         std::string guiDefsDir = (mSelf.getModDir() / "gui_defs").string();
+        logInit("  [1/6] gui_defs obtained");
+
         HotReloadService::init(guiDefsDir);
+        logInit("  [2/6] HotReload init OK");
 
         ThemeManager::applyTheme(0);
+        logInit("  [3/6] Theme applied");
 
         InputBlocker::init();
+        logInit("  [4/6] InputBlocker init OK");
+
+        PacketBridge::init();
+        logInit("  [5/6] PacketBridge init OK");
 
         if (!DX11Hook::init()) {
-            logInit("FastRenderer::enable() FAILED - DX11Hook init");
-            return false;
+            logInit("  [6/6] DX11Hook init FAILED (will retry on first Present)");
+        } else {
+            logInit("  [6/6] DX11Hook init OK");
         }
 
-        logInit("FastRenderer::enable() completed - DX11 Present Hook installed");
+        logInit("FastRenderer::enable() completed");
         return true;
     }
 

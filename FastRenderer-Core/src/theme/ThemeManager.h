@@ -148,7 +148,11 @@ inline void applySpaceBlue() {
     style.WindowBorderSize = 1.0f;
 }
 
+inline int g_pendingTheme = -1;
+
 inline void applyTheme(int themeId) {
+    g_pendingTheme = themeId;
+    if (!ImGui::GetCurrentContext()) return;
     switch (themeId) {
         case DarkClassic: applyDarkClassic(); break;
         case LightClean: applyLightClean(); break;
@@ -157,6 +161,13 @@ inline void applyTheme(int themeId) {
         case DeepForest: applyDeepForest(); break;
         case SpaceBlue: applySpaceBlue(); break;
         default: applyDarkClassic(); break;
+    }
+}
+
+inline void applyPendingTheme() {
+    if (g_pendingTheme >= 0 && ImGui::GetCurrentContext()) {
+        applyTheme(g_pendingTheme);
+        g_pendingTheme = -1;
     }
 }
 

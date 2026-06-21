@@ -83,6 +83,32 @@ inline void InitImGuiFromSwapChain(IDXGISwapChain* pSwapChain) {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
 
+        // Load CJK-capable font for Chinese text support
+        // TTC font index: msyh.ttc(0=Regular), msyhbd.ttc(0=Bold), simsun.ttc(0=Regular)
+        struct CjkFontEntry { const char* path; int index; };
+        CjkFontEntry cjkFonts[] = {
+            {"C:\\Windows\\Fonts\\msyh.ttc", 0},
+            {"C:\\Windows\\Fonts\\simsun.ttc", 0},
+            {"C:\\Windows\\Fonts\\msyhbd.ttc", 0},
+            {"C:\\Windows\\Fonts\\SimHei.ttf", 0},
+        };
+        bool cjkLoaded = false;
+        for (auto& entry : cjkFonts) {
+            FILE* test = nullptr;
+            if (fopen_s(&test, entry.path, "r") == 0 && test) {
+                fclose(test);
+                ImFontConfig cfg;
+                cfg.FontDataOwnedByAtlas = true;
+                cfg.FontNo = entry.index;
+                io.Fonts->AddFontFromFileTTF(entry.path, 16.0f, &cfg, io.Fonts->GetGlyphRangesChineseFull());
+                cjkLoaded = true;
+                break;
+            }
+        }
+        if (!cjkLoaded) {
+            io.Fonts->AddFontDefault();
+        }
+
         ImGui_ImplWin32_Init(g_hWnd);
         ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
         g_imguiInitialized = true;
@@ -130,52 +156,51 @@ inline HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval
 }
 
 inline bool init() {
-    HWND hwnd = FindWindowW(L"Minecraft", NULL);
-    if (!hwnd) hwnd = GetForegroundWindow();
-    if (!hwnd) return false;
+    __try {
+        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+        DXGI_SWAP_CHAIN_DESC sd = {};
+        sd.BufferCount = 1;
+        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.OutputWindow = GetDesktopWindow();
+        sd.SampleDesc.Count = 1;
+        sd.Windowed = TRUE;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferCount = 1;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = hwnd;
-    sd.SampleDesc.Count = 1;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        ID3D11Device* dummyDevice = nullptr;
+        IDXGISwapChain* dummySwapChain = nullptr;
+        ID3D11DeviceContext* dummyContext = nullptr;
 
-    ID3D11Device* dummyDevice = nullptr;
-    IDXGISwapChain* dummySwapChain = nullptr;
-    ID3D11DeviceContext* dummyContext = nullptr;
+        if (FAILED(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
+            &featureLevel, 1, D3D11_SDK_VERSION, &sd,
+            &dummySwapChain, &dummyDevice, NULL, &dummyContext)))
+        {
+            return false;
+        }
 
-    if (FAILED(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
-        &featureLevel, 1, D3D11_SDK_VERSION, &sd,
-        &dummySwapChain, &dummyDevice, NULL, &dummyContext)))
-    {
-        return false;
-    }
+        void** pVTable = *reinterpret_cast<void***>(dummySwapChain);
 
-    void** pVTable = *reinterpret_cast<void***>(dummySwapChain);
+        MH_STATUS status = MH_Initialize();
+        if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
+            dummySwapChain->Release();
+            dummyDevice->Release();
+            dummyContext->Release();
+            return false;
+        }
 
-    MH_STATUS status = MH_Initialize();
-    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
+        MH_CreateHook(pVTable[8], (LPVOID)hkPresent, (void**)&oPresent);
+        MH_EnableHook(pVTable[8]);
+
+        MH_CreateHook(pVTable[13], (LPVOID)hkResizeBuffers, (void**)&oResizeBuffers);
+        MH_EnableHook(pVTable[13]);
+
         dummySwapChain->Release();
         dummyDevice->Release();
         dummyContext->Release();
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
-
-    MH_CreateHook(pVTable[8], (LPVOID)hkPresent, (void**)&oPresent);
-    MH_EnableHook(pVTable[8]);
-
-    MH_CreateHook(pVTable[13], (LPVOID)hkResizeBuffers, (void**)&oResizeBuffers);
-    MH_EnableHook(pVTable[13]);
-
-    dummySwapChain->Release();
-    dummyDevice->Release();
-    dummyContext->Release();
-
-    return true;
 }
 
 }

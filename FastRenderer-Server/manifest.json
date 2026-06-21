@@ -1,0 +1,10 @@
+{
+    "name": "FastRenderer-Server",
+    "entry": "FastRenderer-Server.dll",
+    "version": "0.1.0",
+    "type": "native",
+    "platform": "server",
+    "serverSide": true,
+    "description": "FastRenderer 服务端可选组件 - 服务端插件可推送 UI 到客户端",
+    "author": "FastRenderer Team"
+}
