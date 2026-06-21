@@ -1,0 +1,10 @@
+{
+    "name": "FastRenderer",
+    "entry": "FastRenderer-Client.dll",
+    "version": "0.1.0",
+    "type": "native",
+    "platform": "client",
+    "clientSide": true,
+    "description": "Minecraft Bedrock 前置渲染框架插件",
+    "author": "FastRenderer Team"
+}

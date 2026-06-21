@@ -1,0 +1,32 @@
+# FastRenderer 根目录 .gitignore
+
+# Build output
+**/build/
+**/bin/
+*.dll
+*.pdb
+*.exp
+*.lib
+*.obj
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# xmake cache
+.xmake/
+
+# Codegraph
+.codegraph/
+
+# Excluded directories (existing sub-projects)
+/ChiyanMap/
+/LitematicaBE/
+/LeviLauncher/
+/LeviLamina/
+/bedrock-server-1.26.10.4/
+
+# OS files
+Thumbs.db
+.DS_Store
