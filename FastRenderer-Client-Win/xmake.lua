@@ -78,7 +78,7 @@ target("FastRenderer-Client")
         "/wd4100",
         "/wd4189"
     )
-    add_defines("NOMINMAX", "UNICODE", "FR_EXPORT")
+    add_defines("NOMINMAX", "UNICODE")
     add_packages("levilamina", "imgui", "minhook", "nlohmann_json")
     add_syslinks("d3d11", "dxgi", "user32", "delayimp")
     add_ldflags("/DELAYLOAD:dwmapi.dll", "/DELAYLOAD:imm32.dll", "/DELAYLOAD:LeviLamina.dll")

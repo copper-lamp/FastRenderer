@@ -45,11 +45,12 @@ inline void registerGui(const std::string& pluginId, const std::string& guiId,
     JsonGuiRenderer::clearControlStates();
 }
 
-inline void unregisterGui(const std::string& pluginId, const std::string& guiId) {
+inline bool unregisterGui(const std::string& pluginId, const std::string& guiId) {
     auto& s = getState();
     std::lock_guard<std::mutex> lock(s.mutex);
 
     std::string targetSource = "api:" + guiId;
+    auto before = s.definitions.size();
     s.definitions.erase(
         std::remove_if(s.definitions.begin(), s.definitions.end(),
             [&](const GuiDefinition& d) {
@@ -57,7 +58,9 @@ inline void unregisterGui(const std::string& pluginId, const std::string& guiId)
             }),
         s.definitions.end()
     );
-    s.dirty = true;
+    bool removed = (s.definitions.size() < before);
+    if (removed) s.dirty = true;
+    return removed;
 }
 
 inline std::vector<GuiDefinition> getDefinitions() {

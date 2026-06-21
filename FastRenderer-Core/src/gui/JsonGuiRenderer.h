@@ -63,6 +63,7 @@ inline void renderNode(const GuiNode& node, const std::string& path = "root") {
         int w = JsonGuiParser::getPropInt(node, "width", 400);
         int h = JsonGuiParser::getPropInt(node, "height", 300);
         ImGui::SetNextWindowSize(ImVec2((float)w, (float)h), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_FirstUseEver);
         if (ImGui::Begin(title.c_str())) {
             int idx = 0;
             for (auto& child : node.children) {

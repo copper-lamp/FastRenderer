@@ -10,6 +10,7 @@
 #include <layout/DockLayoutService.h>
 #include <VerificationUI.h>
 #include <PacketBridge.h>
+#include <BridgeService.h>
 #include <MinHook.h>
 #include <windows.h>
 #include <chrono>
@@ -51,18 +52,7 @@ public:
             return VerificationUI::isActive();
         });
 
-        JsonGuiRenderer::setEventCallback([](const std::string& eventName) {
-            if (!eventName.empty()) {
-                fast_packets::ClientGuiEventPacket pkt;
-                pkt.guiId = "local";
-                pkt.controlId = eventName;
-                pkt.eventType = "click";
-                pkt.sendBroadcast();
-            }
-        });
-
         DX11Hook::setRenderCallback([]() {
-            // Apply pending theme once ImGui context is ready
             ThemeManager::applyPendingTheme();
 
             bool nDown = (GetAsyncKeyState(0x4E) & 0x8000) != 0;
@@ -86,20 +76,23 @@ public:
     bool enable() {
         logInit("FastRenderer::enable() started");
 
-        // Initialize MinHook first so all MH_CreateHook calls are safe
         MH_Initialize();
 
-        std::string guiDefsDir = (mSelf.getModDir() / "gui_defs").string();
-        logInit("  [1/6] gui_defs obtained");
+        std::string modDir = mSelf.getModDir().string();
+        logInit(("  [1/6] modDir: " + modDir).c_str());
 
+        std::string guiDefsDir = modDir + "/gui_defs";
         HotReloadService::init(guiDefsDir);
         logInit("  [2/6] HotReload init OK");
 
+        BridgeService::init(modDir);
+        logInit("  [3/6] BridgeService init OK");
+
         ThemeManager::applyTheme(0);
-        logInit("  [3/6] Theme applied");
+        logInit("  [4/6] Theme applied");
 
         InputBlocker::init();
-        logInit("  [4/6] InputBlocker init OK");
+        logInit("  [5/6] InputBlocker init OK");
 
         PacketBridge::init();
         logInit("  [5/6] PacketBridge init OK");
@@ -116,6 +109,7 @@ public:
 
     bool disable() {
         logInit("FastRenderer::disable() called");
+        BridgeService::shutdown();
         HotReloadService::shutdown();
         return true;
     }

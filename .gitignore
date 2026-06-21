@@ -27,6 +27,16 @@
 /LeviLamina/
 /bedrock-server-1.26.10.4/
 
+# E2E test plugins
+/FRTest-Native/
+/FRTest-LSE/
+
 # OS files
 Thumbs.db
 .DS_Store
+
+# Runtime logs
+*.txt
+
+# Duplicate docs
+/docs/新手开发指南/

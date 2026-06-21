@@ -4,17 +4,15 @@
 #include <nlohmann/json.hpp>
 #include "GuiDefinition.h"
 
-#ifdef FR_EXPORT
-#define FRAPI __declspec(dllexport)
-#else
-#define FRAPI __declspec(dllimport)
-#endif
+// FastRenderer API interface.
+// This interface describes the operations a plugin can perform.
+// External plugins do NOT link this DLL — they communicate via BridgeService
+// (write JSON files to FastRenderer/gui_bridge/) or via LeviLamina custom packets.
+// See BridgeService.h for the file bridge protocol.
 
-class FRAPI IFastRendererAPI {
+class IFastRendererAPI {
 public:
     virtual ~IFastRendererAPI() = default;
-
-    static IFastRendererAPI* getInstance();
 
     virtual bool registerGui(const std::string& pluginId,
         const std::string& guiId, const nlohmann::json& definition) = 0;

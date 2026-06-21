@@ -26,10 +26,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace DX11Hook {
 
 using Present_t = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);
-using ResizeBuffers_t = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
 
 inline Present_t oPresent = nullptr;
-inline ResizeBuffers_t oResizeBuffers = nullptr;
 
 inline ID3D11Device* g_pd3dDevice = nullptr;
 inline ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
@@ -51,14 +49,6 @@ inline void ShutdownImGui() {
         ImGui::DestroyContext();
         g_imguiInitialized = false;
     }
-}
-
-inline HRESULT __stdcall hkResizeBuffers(IDXGISwapChain* pSwapChain,
-    UINT BufferCount, UINT Width, UINT Height,
-    DXGI_FORMAT NewFormat, UINT SwapChainFlags)
-{
-    ShutdownImGui();
-    return oResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 }
 
 inline LRESULT __stdcall WndProcHook(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -84,7 +74,6 @@ inline void InitImGuiFromSwapChain(IDXGISwapChain* pSwapChain) {
         io.IniFilename = nullptr;
 
         // Load CJK-capable font for Chinese text support
-        // TTC font index: msyh.ttc(0=Regular), msyhbd.ttc(0=Bold), simsun.ttc(0=Regular)
         struct CjkFontEntry { const char* path; int index; };
         CjkFontEntry cjkFonts[] = {
             {"C:\\Windows\\Fonts\\msyh.ttc", 0},
@@ -190,9 +179,6 @@ inline bool init() {
 
         MH_CreateHook(pVTable[8], (LPVOID)hkPresent, (void**)&oPresent);
         MH_EnableHook(pVTable[8]);
-
-        MH_CreateHook(pVTable[13], (LPVOID)hkResizeBuffers, (void**)&oResizeBuffers);
-        MH_EnableHook(pVTable[13]);
 
         dummySwapChain->Release();
         dummyDevice->Release();
