@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build2/
 bin/
 *.lib
 *.exp
@@ -8,11 +9,13 @@ bin/
 *.obj
 *.ipdb
 *.iobj
+*.o
 
 # IDE / OS
 .vs/
 .vscode/
 .superpowers/
+.codegraph/
 desktop.ini
 Thumbs.db
 
@@ -29,6 +32,19 @@ bds26.10/
 # Package manager
 node_modules/
 
-# Dependencies (local copies)
+# External repositories / submodules (not part of this mod)
+ChiyanMap/
+FRTest-LSE/
+FRTest-Native/
 LeviLamina/
-nlohmann_json/
+LeviLauncher/
+LeviLaunchroid/
+FastRenderer-Client-Droid/deps/
+FastRenderer-Client-Droid/preloader_full/
+FastRenderer-Client-Droid/preloader_temp/
+FastRenderer-Client-Droid/tools/
+
+# Binary tool files
+*.exe
+*.bin
+FastRenderer-Client-Droid/libs/
