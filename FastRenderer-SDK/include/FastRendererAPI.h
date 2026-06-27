@@ -6,13 +6,16 @@
 
 // FastRenderer API interface.
 // This interface describes the operations a plugin can perform.
-// External plugins do NOT link this DLL — they communicate via BridgeService
-// (write JSON files to FastRenderer/gui_bridge/) or via LeviLamina custom packets.
-// See BridgeService.h for the file bridge protocol.
+// Plugins communicate via TCP Bridge (BDS server-side plugin broadcasts JSON
+// over TCP to all connected Win/Android clients).
+// See docs/specs/FR-TCP桥接通信协议.md for the protocol specification.
 
 class IFastRendererAPI {
 public:
     virtual ~IFastRendererAPI() = default;
+
+    /// Get the singleton API instance (implementation provided by Server mod)
+    static IFastRendererAPI* getInstance();
 
     virtual bool registerGui(const std::string& pluginId,
         const std::string& guiId, const nlohmann::json& definition) = 0;

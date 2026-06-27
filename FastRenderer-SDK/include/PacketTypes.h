@@ -1,4 +1,9 @@
 #pragma once
+// ═══════════════════════════════════════════════════════════
+//  DEPRECATED — LeviLamina custom packet type definitions.
+//  Replaced by TCP Bridge JSON messages (see FR-TCP桥接通信协议.md).
+//  Kept for reference only; no longer used in network layer.
+// ═══════════════════════════════════════════════════════════
 #include <cstdint>
 #include <string>
 #include <string_view>

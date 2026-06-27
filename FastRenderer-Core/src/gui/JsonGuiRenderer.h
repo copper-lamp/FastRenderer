@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <cstdio>
 #include <GuiDefinition.h>
 #include <gui/JsonGuiParser.h>
 #include <gui/DynamicText.h>
@@ -10,6 +11,17 @@
 namespace JsonGuiRenderer {
 
 inline std::function<void(const std::string&)> g_eventCallback = nullptr;
+
+inline void rLog(const char* msg) {
+    FILE* f = nullptr;
+    f = fopen("FastRenderer_R.txt", "a");
+    if (f) {
+        fprintf(f, "%s\n", msg);
+        fclose(f);
+    }
+}
+
+inline int g_windowRenderCount = 0;
 
 inline void setEventCallback(std::function<void(const std::string&)> cb) {
     g_eventCallback = cb;
@@ -20,10 +32,10 @@ inline ImVec4 parseColor(const std::string& str, const ImVec4& fallback = ImVec4
     if (str[0] == '#') {
         unsigned int r=255, g=255, b=255, a=255;
         if (str.length() >= 7) {
-            sscanf_s(str.c_str() + 1, "%02x%02x%02x", &r, &g, &b);
+            sscanf(str.c_str() + 1, "%02x%02x%02x", &r, &g, &b);
         }
         if (str.length() >= 9) {
-            sscanf_s(str.c_str() + 7, "%02x", &a);
+            sscanf(str.c_str() + 7, "%02x", &a);
         }
         return ImVec4(r/255.0f, g/255.0f, b/255.0f, a/255.0f);
     }
@@ -64,6 +76,9 @@ inline void renderNode(const GuiNode& node, const std::string& path = "root") {
         int h = JsonGuiParser::getPropInt(node, "height", 300);
         ImGui::SetNextWindowSize(ImVec2((float)w, (float)h), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_FirstUseEver);
+        if (++g_windowRenderCount % 300 == 0) {
+            rLog(("window: title='" + title + "' w=" + std::to_string(w) + " h=" + std::to_string(h) + " path=" + path).c_str());
+        }
         if (ImGui::Begin(title.c_str())) {
             int idx = 0;
             for (auto& child : node.children) {
@@ -186,7 +201,8 @@ inline void renderNode(const GuiNode& node, const std::string& path = "root") {
         }
 
         char buf[256];
-        strncpy_s(buf, sizeof(buf), state.c_str(), sizeof(buf) - 1);
+        strncpy(buf, state.c_str(), sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
         if (placeholder.empty()) {
             ImGui::InputText("##input", buf, sizeof(buf));
         } else {

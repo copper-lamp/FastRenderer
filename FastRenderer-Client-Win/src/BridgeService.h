@@ -1,4 +1,10 @@
 #pragma once
+// ═══════════════════════════════════════════════════════════
+//  DEPRECATED — File-based bridge protocol.
+//  Replaced by TCP Bridge (FrTcpClient + FrTcpServer).
+//  Kept for reference; no longer used in ModEntry.
+//  See docs/specs/FR-TCP桥接通信协议.md
+// ═══════════════════════════════════════════════════════════
 #include <string>
 #include <thread>
 #include <atomic>
@@ -46,21 +52,30 @@ inline void deleteFile(const std::string& path) {
 
 inline bool tryRegisterGui(const json& j, const std::string& pluginId, const std::string& guiId) {
     if (j.contains("definition") && j["definition"].is_string()) {
-        GuiService::registerGui(pluginId, guiId, j["definition"].get<std::string>());
+        std::string defStr = j["definition"].get<std::string>();
+        logMsg(("  tryRegisterGui: def string, size=" + std::to_string(defStr.size())).c_str());
+        if (defStr.size() < 200) logMsg(("    content: " + defStr).c_str());
+        else logMsg(("    content[0..199]: " + defStr.substr(0, 200)).c_str());
+        GuiService::registerGui(pluginId, guiId, defStr);
         return true;
     }
     if (j.contains("definition")) {
-        GuiService::registerGui(pluginId, guiId, j["definition"].dump());
+        std::string defStr = j["definition"].dump();
+        logMsg(("  tryRegisterGui: def object, size=" + std::to_string(defStr.size())).c_str());
+        GuiService::registerGui(pluginId, guiId, defStr);
         return true;
     }
     if (j.contains("root") && j["root"].is_object()) {
+        logMsg("  tryRegisterGui: root object format");
         GuiService::registerGui(pluginId, guiId, j["root"].dump());
         return true;
     }
     if (j.contains("type")) {
+        logMsg(("  tryRegisterGui: top-level type=" + j["type"].get<std::string>()).c_str());
         GuiService::registerGui(pluginId, guiId, j.dump());
         return true;
     }
+    logMsg(("  tryRegisterGui: NO MATCH, keys: " + std::to_string(j.size())).c_str());
     return false;
 }
 

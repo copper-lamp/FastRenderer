@@ -3,6 +3,7 @@
 #include <vector>
 #include <mutex>
 #include <functional>
+#include <cstdio>
 #include <GuiDefinition.h>
 #include <gui/JsonGuiParser.h>
 #include <gui/JsonGuiRenderer.h>
@@ -20,6 +21,15 @@ inline State& getState() {
     return s;
 }
 
+inline void gsLog(const char* msg) {
+    FILE* f = nullptr;
+    f = fopen("FastRenderer_GS.txt", "a");
+    if (f) {
+        fprintf(f, "%s\n", msg);
+        fclose(f);
+    }
+}
+
 inline void registerGui(const std::string& pluginId, const std::string& guiId,
     const std::string& jsonContent)
 {
@@ -27,6 +37,8 @@ inline void registerGui(const std::string& pluginId, const std::string& guiId,
     def.pluginId = pluginId;
     def.id = guiId;
     def.sourceFile = "api:" + guiId;
+
+    gsLog(("registerGui: " + guiId + " plugin=" + pluginId + " root.type=" + def.root.type + " root.props.size=" + std::to_string(def.root.props.size()) + " children=" + std::to_string(def.root.children.size())).c_str());
 
     auto& s = getState();
     std::lock_guard<std::mutex> lock(s.mutex);
@@ -36,6 +48,7 @@ inline void registerGui(const std::string& pluginId, const std::string& guiId,
             existing = def;
             s.dirty = true;
             JsonGuiRenderer::clearControlStates();
+            gsLog(("  -> replaced existing, total=" + std::to_string(s.definitions.size())).c_str());
             return;
         }
     }
@@ -43,6 +56,7 @@ inline void registerGui(const std::string& pluginId, const std::string& guiId,
     s.definitions.push_back(def);
     s.dirty = true;
     JsonGuiRenderer::clearControlStates();
+    gsLog(("  -> added new, total=" + std::to_string(s.definitions.size())).c_str());
 }
 
 inline bool unregisterGui(const std::string& pluginId, const std::string& guiId) {
@@ -85,9 +99,21 @@ inline bool consumeDirty() {
     return wasDirty;
 }
 
+inline int g_renderCount = 0;
+
 inline void renderAll() {
     auto defs = getDefinitions();
-    if (defs.empty()) return;
+    if (defs.empty()) {
+        if (++g_renderCount % 300 == 0) gsLog("renderAll: NO definitions to render");
+        return;
+    }
+
+    if (++g_renderCount % 300 == 0) {
+        gsLog(("renderAll: rendering " + std::to_string(defs.size()) + " defs").c_str());
+        for (auto& d : defs) {
+            gsLog(("  def: " + d.id + " type=" + d.root.type + " children=" + std::to_string(d.root.children.size())).c_str());
+        }
+    }
 
     for (auto& def : defs) {
         JsonGuiRenderer::renderDefinition(def);

@@ -1,42 +1,34 @@
-# FastRenderer 根目录 .gitignore
-
-# Build output
-**/build/
-**/bin/
-*.dll
-*.pdb
-*.exp
+# Build artifacts
+build/
+bin/
 *.lib
+*.exp
+*.pdb
+*.ilk
 *.obj
+*.ipdb
+*.iobj
 
-# IDE
+# IDE / OS
 .vs/
 .vscode/
-.idea/
+.superpowers/
+desktop.ini
+Thumbs.db
 
-# xmake cache
+# BDS server data
+bds26.10/
+
+# XMake cache
 .xmake/
 
-# Codegraph
-.codegraph/
-
-# Excluded directories (existing sub-projects)
-/ChiyanMap/
-/LitematicaBE/
-/LeviLauncher/
-/LeviLamina/
-/bedrock-server-1.26.10.4/
-
-# E2E test plugins
-/FRTest-Native/
-/FRTest-LSE/
-
-# OS files
-Thumbs.db
-.DS_Store
-
-# Runtime logs
+# Logs
+*.log
 *.txt
 
-# Duplicate docs
-/docs/新手开发指南/
+# Package manager
+node_modules/
+
+# Dependencies (local copies)
+LeviLamina/
+nlohmann_json/

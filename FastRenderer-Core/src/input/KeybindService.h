@@ -3,7 +3,11 @@
 #include <string>
 #include <vector>
 #include <functional>
+#ifdef _WIN32
 #include <windows.h>
+#else
+static inline short GetAsyncKeyState(int) { return 0; }
+#endif
 
 namespace KeybindService {
 
@@ -81,6 +85,15 @@ inline std::vector<Entry> getAll() {
         result.push_back(entry);
     }
     return result;
+}
+
+inline void execute(const std::string& bindId) {
+    for (auto& [vk, entry] : g_keybinds) {
+        if (entry.id == bindId && entry.callback) {
+            entry.callback();
+            return;
+        }
+    }
 }
 
 }

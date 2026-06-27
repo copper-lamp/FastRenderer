@@ -1,8 +1,8 @@
 # FastRenderer 实施计划（修订版）
 
 > 基于架构设计文档和 FastUI 语言规范
-> 日期：2026-06-21
-> 版本：v2.1 — 客户端独立运行，文件桥优先
+> 日期：2026-06-28
+> 版本：v2.2 — TCP 桥统一通信，Android 移植规划
 
 ---
 
@@ -50,7 +50,8 @@ FastRenderer/
 │   ├── src/
 │   │   ├── WinPlatform.cpp           ← IPlatform 实现
 │   │   ├── DX11Hook.h
-│   │   ├── BridgeService.h           ← 文件桥接服务（核心新组件）
+│   │   ├── TcpClient.h               ← TCP 客户端（Win/Android 共用）
+│   │   ├── BridgeService.h           ← 文件桥接服务
 │   │   ├── ImGuiManager.h
 │   │   ├── InputBlocker.h
 │   │   └── ModEntry.cpp
@@ -58,8 +59,11 @@ FastRenderer/
 │   ├── manifest.json
 │   └── xmake.lua
 │
-├── FastRenderer-Server/              ← 服务端 DLL (可选)
+├── FastRenderer-Server/              ← 服务端 DLL (可选，内嵌 TCP Server)
 │   ├── src/
+│   │   ├── TcpServer.h               ← TCP 服务器（替代 FRPackets）
+│   │   ├── ServerPluginApi.h
+│   │   └── ModEntry.cpp
 │   ├── manifest.json
 │   └── xmake.lua
 │
@@ -82,16 +86,18 @@ FastRenderer/
 | ThemeManager | ✅ | 6 种主题 |
 | DockLayoutService | ✅ | DockSpace 布局 |
 | HotReloadService | ✅ | gui_defs/ 文件监控 |
-| PacketBridge | ✅ | 自定义 Packet 定义 + 收发 |
+| PacketBridge | → | **已移除**，替换为 **TcpClient + TcpServer** 统一 TCP 桥 |
 | PluginApiImpl | ✅ | 接口定义保留，实现已迁移至 BridgeService |
-| **BridgeService** | ✅ | **文件桥接轮询，任意语言可注册 GUI** |
+| BridgeService | ✅ | 文件桥接轮询，任意语言可注册 GUI |
+| TcpClient + TcpServer | ✅ | TCP 桥统一协议，替代 MC 自定义 Packet |
 | E2E 测试 | ⏳ | 需实机验证 |
 
 ### 架构变更说明
 
 项目在开发过程中经历了架构变更：
 - **v1.0**：插件通过 `IFastRendererAPI::getInstance()` 同进程直调
-- **v1.1 当前**：插件通过文件桥（BridgeService）写入 JSON 文件注册 GUI，支持任意语言
+- **v1.1**：插件通过文件桥（BridgeService）写入 JSON 文件注册 GUI，支持任意语言
+- **v2.0**：统一 TCP 桥接协议，替代 MC 自定义 Packet，Win/Android 统一通信
 
 ---
 
@@ -100,8 +106,39 @@ FastRenderer/
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
 | 实机集成测试 | 高 | 部署到 BDS Mods 目录验证全链路 |
-| 错误恢复 | 中 | 文件桥目录损坏恢复、JSON 解析容错 |
-| 桥接协议文档 | 中 | 明确 JSON 格式规范 |
+| 错误恢复 | 中 | TCP 断线重连、文件桥目录损坏恢复 |
+| 桥接协议文档 | 中 | 已产出：TCP 桥接协议规范 + Android 适配方案 |
+
+---
+
+## Phase 2: Android 移植
+
+| 序号 | 任务 | 说明 | 预估耗时 |
+|------|------|------|---------|
+| 2.1 | NDK CMake 项目搭建 + ImGui/nlohmann_json 集成 | 编译通过 | 0.5 天 |
+| 2.2 | PL_REGISTER_MOD 插件入口 | 验证生命周期 load/enable | 0.5 天 |
+| 2.3 | GlossHook hook eglSwapBuffers + ImGui OpenGLES3 渲染 | 屏幕出现 ImGui 窗口 | 1 天 |
+| 2.4 | PreloaderInput 触摸事件 → ImGui 鼠标事件映射 | 能点击按钮、拖拽 | 0.5 天 |
+| 2.5 | TcpClient 实现 + identify 消息 + 消息路由 | 接入 Server TCP 桥 | 0.5 天 |
+| 2.6 | 虚拟按键面板（替代物理键盘） | 屏幕底部浮动工具栏 | 0.5 天 |
+| 2.7 | 软键盘支持 + GUI 事件回传 Server | 完整双向通信 | 0.5 天 |
+| 2.8 | 端到端集成测试 | 完整链路验证 | 0.5 天 |
+
+### 文件产出
+
+| 实施任务 | 文件路径 |
+|---------|---------|
+| NDK 配置 | `FastRenderer-Client-Droid/CMakeLists.txt` |
+| 插件入口 | `FastRenderer-Client-Droid/src/ModEntry.cpp` |
+| EGL Hook | `FastRenderer-Client-Droid/src/EGLHook.h` |
+| ImGui 渲染 | `FastRenderer-Client-Droid/src/ImGuiBackend.h` |
+| 触摸输入 | `FastRenderer-Client-Droid/src/TouchInput.h` |
+| TCP 客户端 | `FastRenderer-Client-Droid/src/TcpClient.h`（与 Win 端共用） |
+| 插件清单 | `FastRenderer-Client-Droid/manifest.json` |
+
+---
+
+## Phase 3: 高级功能
 
 ---
 

@@ -1,11 +1,11 @@
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/mod/RegisterHelper.h"
-#include "FRPackets.h"
+#include "TcpServer.h"
 #include "ServerPluginApi.h"
 #include <fstream>
 #include <chrono>
 #include <ctime>
-#include <ll/api/network/packet/PacketRegistrar.h>
+#include <thread>
 
 namespace fast_renderer {
 
@@ -36,60 +36,39 @@ public:
     bool enable() {
         logInit("FastRenderer-Server::enable() started");
 
-        auto& reg = ll::network::PacketRegistrar::getInstance();
+        // ─── Start TCP Server ───
+        uint16_t port = 12345;
 
-        auto nameHash = [](const std::string& n) -> uint64 {
-            return std::hash<std::string_view>{}(n);
-        };
+        if (!m_tcpServer.start(port)) {
+            logInit(("  TCP Server FAILED to start on port " + std::to_string(port)).c_str());
+            logInit("FastRenderer-Server::enable() completed with errors");
+            return true;  // don't prevent server from loading
+        }
 
-        static fast_packets::GuiRegistrationPacket  guiRegPkt;
-        static fast_packets::GuiUnregistrationPacket guiUnregPkt;
-        static fast_packets::KeybindRegistrationPacket keyRegPkt;
-        static fast_packets::KeybindUnregistrationPacket keyUnregPkt;
-        static GuiEventHandler guiEvtHandler;
-        static DataExchangeHandler dataExHandler;
+        logInit(("  TCP Server started on port " + std::to_string(port)).c_str());
 
-        reg.registerPacket("FR_GuiRegistration", nameHash("FR_GuiRegistration"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::GuiRegistrationPacket>();
-            }, nullptr);
+        // Inject TcpServer into PluginApi
+        ServerFRPluginApi& api = ServerFRPluginApi::getInstance();
+        api.setTcpServer(&m_tcpServer);
 
-        reg.registerPacket("FR_GuiUnregistration", nameHash("FR_GuiUnregistration"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::GuiUnregistrationPacket>();
-            }, nullptr);
+        // ─── TCP message handler ───
+        // Routes gui_event and data_exchange from clients to PluginApi dispatch
+        m_tcpServer.setMessageHandler([](const std::string& player, const std::string& jsonMsg) {
+            ServerFRPluginApi::getInstance().handleTcpMessage(player, jsonMsg);
+        });
 
-        reg.registerPacket("FR_KeybindRegistration", nameHash("FR_KeybindRegistration"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::KeybindRegistrationPacket>();
-            }, nullptr);
-
-        reg.registerPacket("FR_KeybindUnregistration", nameHash("FR_KeybindUnregistration"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::KeybindUnregistrationPacket>();
-            }, nullptr);
-
-        reg.registerPacket("FR_GuiEvent", nameHash("FR_GuiEvent"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::GuiEventPacket>();
-            }, &guiEvtHandler);
-
-        reg.registerPacket("FR_DataExchange", nameHash("FR_DataExchange"),
-            []() -> std::unique_ptr<ll::network::Packet> {
-                return std::make_unique<fast_packets::DataExchangePacket>();
-            }, &dataExHandler);
-
-        logInit("FastRenderer-Server::enable() completed - 6 packets registered");
+        logInit("FastRenderer-Server::enable() completed - TCP Server ready");
         return true;
     }
 
     bool disable() {
         logInit("FastRenderer-Server::disable() called");
+        m_tcpServer.stop();
         return true;
     }
 
 private:
-    ll::mod::NativeMod& mSelf;
+    FrTcpServer m_tcpServer;
 };
 
 FRServerImpl& FRServerImpl::getInstance() {

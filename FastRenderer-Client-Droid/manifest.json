@@ -1,0 +1,10 @@
+{
+    "type": "preload-native",
+    "name": "FastRenderer-Android",
+    "entry": "libFastRenderer-Android.so",
+    "author": "FastRenderer Team",
+    "version": "0.1.0",
+    "description": "Minecraft Bedrock Android 渲染框架插件 — TCP桥接远程GUI + ImGui渲染 + 悬浮菜单",
+    "minecraft_versions": ["1.21.0*"],
+    "icon": "icon.png"
+}

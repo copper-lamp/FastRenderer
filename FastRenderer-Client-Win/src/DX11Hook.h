@@ -26,8 +26,10 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace DX11Hook {
 
 using Present_t = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);
+using ExecuteCommandLists_t = void(__stdcall*)(ID3D12CommandQueue*, UINT, ID3D12CommandList* const*);
 
 inline Present_t oPresent = nullptr;
+inline ExecuteCommandLists_t oExecuteCommandLists = nullptr;
 
 inline ID3D11Device* g_pd3dDevice = nullptr;
 inline ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
@@ -40,6 +42,14 @@ inline std::function<void()> g_renderCallback = nullptr;
 
 inline void setRenderCallback(std::function<void()> cb) {
     g_renderCallback = std::move(cb);
+}
+
+inline void dxLog(const char* msg) {
+    FILE* f = nullptr;
+    if (fopen_s(&f, "FastRenderer_DX.txt", "a") == 0 && f) {
+        fprintf(f, "%s\n", msg);
+        fclose(f);
+    }
 }
 
 inline void ShutdownImGui() {
@@ -59,13 +69,20 @@ inline LRESULT __stdcall WndProcHook(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 }
 
 inline void InitImGuiFromSwapChain(IDXGISwapChain* pSwapChain) {
+    dxLog("InitImGuiFromSwapChain: starting");
     if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&g_pd3dDevice))) {
+        dxLog("InitImGuiFromSwapChain: GetDevice OK");
         g_pd3dDevice->GetImmediateContext(&g_pd3dDeviceContext);
 
         DXGI_SWAP_CHAIN_DESC sd;
         pSwapChain->GetDesc(&sd);
         g_hWnd = sd.OutputWindow;
         if (!g_hWnd) g_hWnd = FindWindowW(L"Minecraft", NULL);
+        if (g_hWnd) {
+            dxLog("InitImGuiFromSwapChain: HWND found");
+        } else {
+            dxLog("InitImGuiFromSwapChain: HWND not found, using FindWindow");
+        }
 
         oWndProc = (WNDPROC)SetWindowLongPtr(g_hWnd, GWLP_WNDPROC, (LONG_PTR)WndProcHook);
 
@@ -95,12 +112,16 @@ inline void InitImGuiFromSwapChain(IDXGISwapChain* pSwapChain) {
             }
         }
         if (!cjkLoaded) {
+            dxLog("InitImGuiFromSwapChain: no CJK font, using default");
             io.Fonts->AddFontDefault();
         }
 
         ImGui_ImplWin32_Init(g_hWnd);
         ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
         g_imguiInitialized = true;
+        dxLog("InitImGuiFromSwapChain: SUCCESS");
+    } else {
+        dxLog("InitImGuiFromSwapChain: GetDevice FAILED");
     }
 }
 
@@ -119,8 +140,15 @@ inline void RenderFrame() {
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
+inline int g_hkPresentCount = 0;
+
 inline HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
-    if (!g_imguiInitialized && !g_imguiInitAttempted) {
+    g_hkPresentCount++;
+    if (g_hkPresentCount <= 5 || g_hkPresentCount % 300 == 0) {
+        dxLog(("hkPresent called #" + std::to_string(g_hkPresentCount) + " init=" + std::to_string(g_imguiInitialized) + " attempt=" + std::to_string(g_imguiInitAttempted)).c_str());
+    }
+
+    if (!g_imguiInitialized) {
         g_imguiInitAttempted = true;
         InitImGuiFromSwapChain(pSwapChain);
     }
@@ -144,47 +172,79 @@ inline HRESULT __stdcall hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval
     return oPresent(pSwapChain, SyncInterval, Flags);
 }
 
+inline void __stdcall hkExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists) {
+    // Capture D3D12 command queue for D3D11On12 rendering path
+    oExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
+}
+
+inline bool initImpl() {
+    HWND hwnd = FindWindowW(L"Minecraft", NULL);
+    if (!hwnd) hwnd = GetForegroundWindow();
+    if (!hwnd) { dxLog("init: no MC hwnd found"); return false; }
+    dxLog("init: MC hwnd found");
+
+    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+    DXGI_SWAP_CHAIN_DESC sd = {};
+    sd.BufferCount = 1; sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; sd.OutputWindow = hwnd;
+    sd.SampleDesc.Count = 1; sd.Windowed = TRUE; sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    ID3D11Device* dummyDevice = nullptr;
+    IDXGISwapChain* dummySwapChain = nullptr;
+    ID3D11DeviceContext* dummyContext = nullptr;
+
+    MH_STATUS status = MH_Initialize();
+
+    if (SUCCEEDED(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
+        &featureLevel, 1, D3D11_SDK_VERSION, &sd,
+        &dummySwapChain, &dummyDevice, NULL, &dummyContext)))
+    {
+        dxLog("init: dummy D3D11 swapchain created OK");
+        void** pVTable = *reinterpret_cast<void***>(dummySwapChain);
+        if (status == MH_OK || status == MH_ERROR_ALREADY_INITIALIZED) {
+            MH_CreateHook(pVTable[8], (LPVOID)hkPresent, (void**)&oPresent);
+            MH_EnableHook(pVTable[8]);
+            dxLog("init: Present hook installed");
+        }
+        dummySwapChain->Release(); dummyDevice->Release(); dummyContext->Release();
+    } else {
+        dxLog("init: D3D11CreateDeviceAndSwapChain FAILED");
+    }
+
+    // Also hook D3D12 ExecuteCommandLists (RenderDragon fallback)
+    ID3D12Device* pDummyD12Device = nullptr;
+    if (SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0,
+        __uuidof(ID3D12Device), (void**)&pDummyD12Device)))
+    {
+        D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        ID3D12CommandQueue* pDummyQueue = nullptr;
+        if (SUCCEEDED(pDummyD12Device->CreateCommandQueue(&queueDesc,
+            __uuidof(ID3D12CommandQueue), (void**)&pDummyQueue)))
+        {
+            void** pVTable12 = *reinterpret_cast<void***>(pDummyQueue);
+            if (MH_CreateHook(pVTable12[10], (LPVOID)hkExecuteCommandLists,
+                (void**)&oExecuteCommandLists) == MH_OK)
+            {
+                MH_EnableHook(pVTable12[10]);
+                dxLog("init: D3D12 ExecuteCommandLists hook installed");
+            }
+            pDummyQueue->Release();
+        }
+        pDummyD12Device->Release();
+    } else {
+        dxLog("init: D3D12CreateDevice FAILED (non-fatal)");
+    }
+
+    dxLog("init: COMPLETE");
+    return true;
+}
+
 inline bool init() {
     __try {
-        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-        DXGI_SWAP_CHAIN_DESC sd = {};
-        sd.BufferCount = 1;
-        sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        sd.OutputWindow = GetDesktopWindow();
-        sd.SampleDesc.Count = 1;
-        sd.Windowed = TRUE;
-        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-        ID3D11Device* dummyDevice = nullptr;
-        IDXGISwapChain* dummySwapChain = nullptr;
-        ID3D11DeviceContext* dummyContext = nullptr;
-
-        if (FAILED(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
-            &featureLevel, 1, D3D11_SDK_VERSION, &sd,
-            &dummySwapChain, &dummyDevice, NULL, &dummyContext)))
-        {
-            return false;
-        }
-
-        void** pVTable = *reinterpret_cast<void***>(dummySwapChain);
-
-        MH_STATUS status = MH_Initialize();
-        if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
-            dummySwapChain->Release();
-            dummyDevice->Release();
-            dummyContext->Release();
-            return false;
-        }
-
-        MH_CreateHook(pVTable[8], (LPVOID)hkPresent, (void**)&oPresent);
-        MH_EnableHook(pVTable[8]);
-
-        dummySwapChain->Release();
-        dummyDevice->Release();
-        dummyContext->Release();
-        return true;
+        return initImpl();
     } __except (EXCEPTION_EXECUTE_HANDLER) {
+        dxLog("init: EXCEPTION in init()");
         return false;
     }
 }

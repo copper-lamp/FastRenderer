@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/FastRenderer/FastRenderer-Client-Droid/build2/android-release/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
