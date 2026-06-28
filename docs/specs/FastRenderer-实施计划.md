@@ -51,7 +51,7 @@ FastRenderer/
 │   │   ├── WinPlatform.cpp           ← IPlatform 实现
 │   │   ├── DX11Hook.h
 │   │   ├── TcpClient.h               ← TCP 客户端（Win/Android 共用）
-│   │   ├── BridgeService.h           ← 文件桥接服务
+│   │   ├── ... (BridgeService.h 已废弃，移至 archive/deprecated/)
 │   │   ├── ImGuiManager.h
 │   │   ├── InputBlocker.h
 │   │   └── ModEntry.cpp
@@ -87,8 +87,8 @@ FastRenderer/
 | DockLayoutService | ✅ | DockSpace 布局 |
 | HotReloadService | ✅ | gui_defs/ 文件监控 |
 | PacketBridge | → | **已移除**，替换为 **TcpClient + TcpServer** 统一 TCP 桥 |
-| PluginApiImpl | ✅ | 接口定义保留，实现已迁移至 BridgeService |
-| BridgeService | ✅ | 文件桥接轮询，任意语言可注册 GUI |
+| PluginApiImpl | ✅ | 接口定义保留，实现已迁移至 BridgeService（BridgeService 已废弃，现使用 TCP 桥） |
+| BridgeService | → | **已废弃**，由 TcpClient/TcpServer TCP 桥替代，原代码归档于 `archive/deprecated/` |
 | TcpClient + TcpServer | ✅ | TCP 桥统一协议，替代 MC 自定义 Packet |
 | E2E 测试 | ⏳ | 需实机验证 |
 
@@ -151,7 +151,7 @@ FastRenderer/
 | FastRendererAPI | `FastRenderer-SDK/include/FastRendererAPI.h` |
 | ModEntry | `FastRenderer-Client-Win/src/ModEntry.cpp` |
 | DX11Hook | `FastRenderer-Client-Win/src/DX11Hook.h` |
-| BridgeService | `FastRenderer-Client-Win/src/BridgeService.h` |
+| ~~BridgeService~~ (已废弃) | `archive/deprecated/BridgeService.h` |
 | ImGuiManager | `FastRenderer-Client-Win/src/ImGuiManager.h` |
 | WinPlatform | `FastRenderer-Client-Win/src/WinPlatform.cpp` |
 | InputBlocker | `FastRenderer-Client-Win/src/InputBlocker.h` |
@@ -175,6 +175,6 @@ FastRenderer/
 | M1: FR Client 可加载 | Step 1 完成 | ✅ |
 | M2: ImGui 渲染成功 | Step 2 完成 | ✅ |
 | M3: JSON GUI 渲染成功 | Step 3 完成 | ✅ |
-| M4: 文件桥接通信 | BridgeService 实现 | ✅ |
+| M4: 文件桥接通信 | ~~BridgeService 实现~~ (已废弃，由 TCP 桥替代) | ✅ |
 | M5: 端到端验证 | 实机验证通过 | ⏳ |
 | M6: Android 移植 | Phase 2 完成 | ⏳ |

@@ -8,11 +8,12 @@
 #include <theme/ThemeManager.h>
 #include <hotload/HotReloadService.h>
 #include <layout/DockLayoutService.h>
-#include <VerificationUI.h>
+#include <BuiltinSettingsUI.h>
 #include <net/TcpClient.h>
 #include <net/TcpServer.h>
 #include <res/TextureManager.h>
 #include <res/AudioManager.h>
+#include <res/ResourceManager.h>
 #include <UIRenderHook.h>
 #include <MinHook.h>
 #include <windows.h>
@@ -24,6 +25,29 @@
 #include <nlohmann/json.hpp>
 
 namespace fast_renderer {
+
+// ─── 资源缓存目录 ───
+static std::string g_resourceDir;
+
+// ─── Hex 编解码（用于 TCP 文件传输）───
+inline std::string hexEncode(const uint8_t* data, size_t len) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out(len * 2, '\0');
+    for (size_t i = 0; i < len; i++) {
+        out[i * 2]     = hex[(data[i] >> 4) & 0xF];
+        out[i * 2 + 1] = hex[data[i] & 0xF];
+    }
+    return out;
+}
+inline std::vector<uint8_t> hexDecode(const std::string& hex) {
+    std::vector<uint8_t> out(hex.size() / 2);
+    for (size_t i = 0; i < out.size(); i++) {
+        auto h = hex[i * 2], l = hex[i * 2 + 1];
+        out[i] = (uint8_t)(((h >= 'A' ? (h - 'A' + 10) : (h - '0')) << 4) |
+                            (l >= 'A' ? (l - 'A' + 10) : (l - '0')));
+    }
+    return out;
+}
 
 // ─── 全局通信实例（前置声明，dispatchTcpMessage 的 lambda 中使用）───
 static FrTcpServer g_embeddedServer;
@@ -40,8 +64,6 @@ inline void logInit(const char* msg) {
         fclose(flog);
     }
 }
-
-inline bool g_lastNState = false;
 
 // ─── TCP Client message dispatcher ───
 // Routes incoming TCP messages to the appropriate service
@@ -101,7 +123,46 @@ inline void dispatchTcpMessage(const std::string& jsonMsg) {
             logInit(("  TCP keybind_unregister: " + j.value("bindId", "")).c_str());
         }
         else if (type == "data_exchange") {
-            logInit(("  TCP data_exchange: channel=" + j.value("channel", "")).c_str());
+            std::string channel = j.value("channel", "");
+            logInit(("  TCP data_exchange: channel=" + channel).c_str());
+
+            // ─── File transfer: receive resource files via TCP ───
+            if (channel == "file_transfer") {
+                std::string fileName = j.value("fileName", "");
+                std::string hexData = j.value("data", "");
+                if (!fileName.empty() && !hexData.empty()) {
+                     auto rawData = hexDecode(hexData);
+                     std::string savePath = g_resourceDir + "/" + fileName;
+                     logInit(("  [FILE] received: " + fileName + " hex=" + std::to_string(hexData.size()) + " decoded=" + std::to_string(rawData.size()) + " bytes").c_str());
+                     FILE* f = nullptr;
+                     if (fopen_s(&f, savePath.c_str(), "wb") == 0 && f) {
+                         fwrite(rawData.data(), 1, rawData.size(), f);
+                         fclose(f);
+                         logInit(("  [FILE] saved: " + savePath + " (" + std::to_string(rawData.size()) + " bytes)").c_str());
+                         // Register with ResourceManager
+                          logInit("  [FILE] registering with ResourceManager...");
+                         ResourceManager::registerFile(savePath, "FRTest-Native", ResourceManager::Source::Remote);
+                         logInit(("  [FILE] ResourceManager total now: " + std::to_string(ResourceManager::totalCount())).c_str());
+                         // TextureManager::loadFromFile is NOT called here because D3D11 calls
+                         // must be on the render thread. The image node renderer in JsonGuiRenderer
+                         // will auto-load textures during rendering via its built-in fallback.
+                         if (fileName.find(".png") != std::string::npos || fileName.find(".jpg") != std::string::npos) {
+                             logInit("  [FILE] image saved, TextureManager load deferred to render thread");
+                         }
+                        // Broadcast notification to all connected players
+                        if (g_embeddedServer.isRunning()) {
+                            nlohmann::json notify;
+                            notify["type"] = "data_exchange";
+                            notify["channel"] = "file_received";
+                            notify["fileName"] = fileName;
+                            notify["savePath"] = savePath;
+                            g_embeddedServer.broadcast(notify.dump());
+                        }
+                    } else {
+                        logInit(("  File save FAILED: " + savePath).c_str());
+                    }
+                }
+            }
         }
         else {
             logInit(("  TCP unknown type: " + type).c_str());
@@ -145,39 +206,48 @@ public:
 
         DX11Hook::g_imguiInitAttempted = false;
 
+        // ─── Block keyboard input when menu is visible (prevents game interference) ───
+        // Key capture mode temporarily disables blocking so GetAsyncKeyState works
         InputBlocker::setActiveChecker([]() -> bool {
-            return VerificationUI::isActive();
+            if (BuiltinSettingsUI::isVisible() && !BuiltinSettingsUI::isCapturing()) {
+                return true; // Block input when menu is open (not in capture mode)
+            }
+            return false; // Don't block when menu is closed or in key capture mode
         });
+
+        // ─── Add F8 to InputBlocker whitelist so it can toggle menu ───
+        InputBlocker::addToWhitelist(0x77); // F8
 
         KeybindService::setActiveChecker([]() -> bool {
             return true;
         });
 
         // ─── Hook GuiEvent to send via TCP ───
-        // When user clicks a button in any GUI, fire TCP gui_event
+        // Note: Built-in settings menu now uses direct ImGui (not GuiService),
+        // so its events are handled locally via button callbacks in BuiltinSettingsUI::render()
         JsonGuiRenderer::setEventCallback([](const std::string& eventName) {
-            // eventName = onClick action (e.g. "calc_1", "dash_refresh")
-            // We need guiId from the current rendering context
             std::string guiId = JsonGuiRenderer::g_currentGuiId;
             if (guiId.empty() || eventName.empty()) return;
 
+            // Forward GUI events via TCP
             sendGuiEvent(guiId, eventName, "click", "");
             logInit(("  GUI event: gui=" + guiId + " action=" + eventName).c_str());
         });
 
+        // ─── F8 keybind to toggle settings menu ───
+        KeybindService::registerKeybind("FR", "open_settings", "设置菜单", 0x77,
+            []() {
+                BuiltinSettingsUI::openMenu();
+                logInit("  F8 pressed: toggled settings menu");
+            });
+
         DX11Hook::setRenderCallback([]() {
             ThemeManager::applyPendingTheme();
 
-            bool nDown = (GetAsyncKeyState(0x4E) & 0x8000) != 0;
-            if (nDown && !g_lastNState) {
-                VerificationUI::g_showConsole = !VerificationUI::g_showConsole;
-            }
-            g_lastNState = nDown;
-
             HotReloadService::poll();
+            BuiltinSettingsUI::render();
             GuiService::renderAll();
             KeybindService::poll();
-            VerificationUI::renderConsole();
         });
 
         logInit("FastRenderer::load() completed");
@@ -200,6 +270,20 @@ public:
 
         ThemeManager::applyTheme(0);
         logInit("  [4/6] Theme applied");
+
+        // Initialize built-in settings menu
+        BuiltinSettingsUI::setTcpChecker([]() -> bool {
+            return g_tcpClient.isConnected() || g_embeddedServer.isRunning();
+        });
+        logInit("  [4c/6] BuiltinSettingsUI ready");
+
+        // Initialize resource cache directory for TCP file transfers
+        g_resourceDir = modDir + "/resources";
+        std::filesystem::create_directories(g_resourceDir);
+        // Initialize ResourceManager and scan for existing resources
+        ResourceManager::init(g_resourceDir);
+        ResourceManager::scanAll();
+        logInit(("  [4d/6] ResourceManager: " + g_resourceDir + " scanned=" + std::to_string(ResourceManager::totalCount())).c_str());
 
         // Load keybinds from keybinds/ directory
         std::string kbDir = modDir + "/keybinds";

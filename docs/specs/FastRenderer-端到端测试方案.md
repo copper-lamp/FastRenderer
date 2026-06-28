@@ -31,8 +31,8 @@
 │  └──────────────┘              └────────┬───────────┘   │
 │                                         │               │
 │  ┌──────────────┐  写入 JSON    ┌───────▼───────────┐   │
-│  │ FRTest-LSE   ├─────────────►│  BridgeService     │   │
-│  │ (JS, LSE)    │              │  (200ms 轮询)      │   │
+│  │ FRTest-LSE   ├─────────────►│  文件桥接 (已废弃) │   │
+│  │ (JS, LSE)    │              │  → 建议迁移至 TCP │   │
 │  └──────────────┘              └───────┬───────────┘   │
 │                                        │               │
 │                               ┌────────▼──────────┐    │
@@ -61,36 +61,11 @@
 
 ## 三、测试场景
 
-### 场景 A：文件桥 — 原生插件
+### ~~场景 A / 场景 B：文件桥 — 已废弃~~
 
-**角色**：FRTest-Native（原生 LL3 插件）
-
-**测试步骤**：
-1. FRTest-Native 在 `load()` 阶段写入 `gui_pending.json`（批量数组格式）
-2. BridgeService 轮询读取，解析 JSON 数组
-3. 调用 `GuiService::registerGui()` 注册所有 GUI
-4. 注册按键绑定（写入 `keybind_pending.json`）
-5. 验证 GUI 在游戏内正确渲染
-6. 验证按键绑定生效
-
-**验证指标**：
-- BridgeService 日志显示 `batch: N entries`（N ≥ 6）
-- `GuiService` 包含对应数量的定义
-- 游戏内可见对应窗口
-
-### 场景 B：文件桥 — JS 插件
-
-**角色**：FRTest-LSE（LegacyScriptEngine nodejs 插件）
-
-**测试步骤**：
-1. FRTest-LSE 在 `plugins/` 目录加载后写入 `gui_pending.json`
-2. BridgeService 轮询读取并注册
-3. 验证 JS 插件注册的 GUI 在游戏内显示
-
-**验证指标**：
-- FRTest_LSE.txt 日志显示写入成功
-- BridgeService 日志显示 `batch: N entries`
-- 游戏内可见 "FRTest LSE" 相关窗口
+> **注意**：BridgeService 文件桥接协议已被 TCP 桥接协议替代，以下测试场景仅作历史参考。
+> 新插件请直接使用 TCP 桥（TcpClient/TcpServer）注册 GUI。
+> 原 BridgeService 代码已归档至 `archive/deprecated/BridgeService.h`。
 
 ### 场景 C：TCP 桥远程（Win 客户端）
 
@@ -129,7 +104,11 @@
 
 ---
 
-## 四、桥接文件格式
+## 四、桥接文件格式（已废弃）
+
+> **注意**：以下文件格式基于已废弃的 BridgeService 文件桥接协议，仅作历史参考。
+> 当前使用 TCP 桥接协议，详见 [FR-TCP桥接通信协议.md](FR-TCP桥接通信协议.md)。
+> 原代码已归档至 `archive/deprecated/BridgeService.h`。
 
 ### gui_pending.json (批量数组格式)
 
@@ -191,8 +170,8 @@
 
 加载顺序（Win 端）：
 ```
-1. FastRenderer-Client.dll  ← 前置框架（启动 BridgeService + TcpClient）
-2. FRTest-Native.dll        ← 测试插件（写入桥接文件）
+1. FastRenderer-Client.dll  ← 前置框架（启动 TcpClient）
+2. FRTest-Native.dll        ← 测试插件（通过 TCP 桥注册 GUI）
 3. FRTest-LSE               ← JS 测试插件（写入桥接文件）
 ```
 
@@ -207,8 +186,8 @@
 
 | 日志文件 | 内容 | 关键信息 |
 |---------|------|---------|
-| `FastRenderer_Init.txt` | FastRenderer 初始化过程 | BridgeService init OK |
-| `FastRenderer_Bridge.txt` | BridgeService 轮询日志 | `batch: N entries` |
+| `FastRenderer_Init.txt` | FastRenderer 初始化过程 | TcpClient connected OK |
+| `FastRenderer_Bridge.txt` | ~~BridgeService 轮询日志~~ | ~~已废弃~~ |
 | `FRTest_Result.txt` | FRTest-Native 测试日志 | `wrote gui_pending.json` |
 | `FRTest_LSE.txt` | FRTest-LSE 测试日志 | `Wrote gui_pending.json` |
 
@@ -218,12 +197,7 @@
 
 | 检查项 | 标准 |
 |--------|------|
-| 场景 A - BridgeService 启动 | 日志显示 `bridgeLoop: started` |
-| 场景 A - 批量数组注册 | 日志显示 `batch: 6 entries` |
-| 场景 A - 注册成功 | GuiService 包含 ≥6 个定义 |
-| 场景 A - GUI 可见 | 游戏内显示注册的窗口 |
-| 场景 B - JS 写入 | FRTest_LSE.txt 显示写入成功 |
-| 场景 B - BridgeService 处理 | 日志显示 `batch: N entries` |
+| ~~场景 A/B~~ (文件桥已废弃) | ~~已由 TCP 桥替代~~ | ~~原代码归档于 archive/deprecated/~~ |
 | 场景 C - TCP 桥 (Win) | Win 客户端收到并渲染 Server 推送的 GUI |
 | 场景 C - TCP 事件回传 | Server 收到客户端 `gui_event` |
 | 场景 D - TCP 桥 (Android) | Android 手机屏幕渲染 Server 推送的 GUI |

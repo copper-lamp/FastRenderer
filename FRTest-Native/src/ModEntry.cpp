@@ -59,20 +59,6 @@ static struct MusicPlayerState {
     bool isOpen = false;
 } g_music;
 
-// ─── 设置菜单状态 ───
-static struct SettingsState {
-    int page = 0;                     // 0=dashboard,1=keybinds,2=settings
-    int guiCount = 0;
-    int fps = 60;
-    bool tcpConnected = false;
-    std::string captureBindId;
-    std::string conflictMsg;
-    std::string pluginFilter;
-    std::vector<std::string> recentEvents;
-    struct KbInfo { std::string pluginId, bindId, bindName; int vkCode; };
-    std::vector<KbInfo> keybinds;
-} g_settings;
-
 // ─── Timestamped log ───
 inline void testLog(const char* category, const char* msg) {
     auto now = std::chrono::system_clock::now();
@@ -84,6 +70,17 @@ inline void testLog(const char* category, const char* msg) {
         fprintf(f, "[%02d:%02d:%02d] [%s] %s\n", local.tm_hour, local.tm_min, local.tm_sec, category, msg);
         fclose(f);
     }
+}
+
+// ─── Hex 编码（TCP 文件传输用）───
+inline std::string hexEncode(const uint8_t* data, size_t len) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out(len * 2, '\0');
+    for (size_t i = 0; i < len; i++) {
+        out[i * 2]     = hex[(data[i] >> 4) & 0xF];
+        out[i * 2 + 1] = hex[data[i] & 0xF];
+    }
+    return out;
 }
 
 // ─── Helper: Send JSON over TCP ───
@@ -114,7 +111,6 @@ static void writeAllGuiFiles() {
 }
 
 // ─── Forward declarations ───
-static void registerSettingsMenu();
 
 // ─── Register all GUIs via TCP ───
 static void registerAllGuis() {
@@ -132,12 +128,10 @@ static void registerAllGuis() {
         testLog("GUI+REG", "music_player — 音乐播放器");
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    // Settings menu
-    {
-        registerSettingsMenu();
-        testLog("GUI+REG", "settings_menu — 设置菜单");
-    }
-    testLog("GUI+REG", "注册完毕: 3个GUI (image_viewer, music_player, settings_menu)");
+    // Settings menu — 已移至 FR 模组内置 UI (FastRenderer-Client-Win)
+    // 不再通过 TCP 注册
+    testLog("GUI+REG", "settings_menu — 由 FR 模组内置");
+    testLog("GUI+REG", "注册完毕: 2个GUI (image_viewer, music_player)");
 }
 
 // ─── Register keybinds via TCP ───
@@ -145,8 +139,8 @@ static void registerKeybinds() {
     struct { const char* id; const char* name; int vk; } binds[] = {
         {"img_viewer",    "图片查看器",   0x49},  // I
         {"music_player",  "音乐播放器",   0x4D},  // M
-        {"open_settings", "设置菜单",     0x77},  // F8
         {"toggle_f3_debug","F3调试",      0x72},  // F3
+        // open_settings (F8) — 已移至 FR 模组内置 UI
     };
     for (auto& b : binds) {
         sendJson({{"type","keybind_register"},{"pluginId","FRTest-Native"},{"bindId",b.id},{"bindName",b.name},{"vkCode",b.vk},{"targetPlayer",""}});
@@ -154,6 +148,45 @@ static void registerKeybinds() {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     testLog("KB+REG", "全部按键注册完成");
+}
+
+// ─── Send pack files via TCP (resource transfer test) ───
+static void sendPackFiles() {
+    std::string packDir = std::filesystem::path(g_modDir).string() + "/pack";
+    if (!std::filesystem::exists(packDir)) {
+        testLog("FILE", "pack/ directory not found, skipping file transfer");
+        return;
+    }
+    int sent = 0;
+    for (auto& entry : std::filesystem::directory_iterator(packDir)) {
+        if (!entry.is_regular_file()) continue;
+        std::string fpath = entry.path().string();
+        std::string fname = entry.path().filename().string();
+        // Read file
+        FILE* f = nullptr;
+        fopen_s(&f, fpath.c_str(), "rb");
+        if (!f) { testLog("FILE", ("open failed: " + fpath).c_str()); continue; }
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        std::vector<uint8_t> buf(sz);
+        fread(buf.data(), 1, sz, f);
+        fclose(f);
+        // Encode and send
+        std::string hexData = hexEncode(buf.data(), buf.size());
+        testLog("FILE", ("sending: " + fname + " raw=" + std::to_string(sz) + " hex=" + std::to_string(hexData.size()) + " bytes").c_str());
+        sendJson({
+            {"type", "data_exchange"},
+            {"channel", "file_transfer"},
+            {"fileName", fname},
+            {"data", hexData},
+            {"targetPlayer", ""}
+        });
+        sent++;
+        testLog("FILE", ("TX OK: " + fname + " (" + std::to_string(sz) + " bytes)").c_str());
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    testLog("FILE", (std::to_string(sent) + " pack files sent via TCP").c_str());
 }
 
 // ─── Send identify ───
@@ -182,74 +215,9 @@ static void registerAllAfterConnect() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     registerAllGuis();
     registerKeybinds();
+    sendPackFiles(); // 通过 TCP 传输 pack 资源文件
     g_registered = true;
-    testLog("TCP", "全部注册完成");
-}
-
-// ══════════════════════════════════════════════════════════
-//  设置菜单
-// ══════════════════════════════════════════════════════════
-
-static void sendSettingsMenu() {
-    json state;
-    state["page"] = g_settings.page;
-    state["guiCount"] = g_settings.guiCount;
-    state["fps"] = g_settings.fps;
-    state["tcpConnected"] = g_settings.tcpConnected;
-    state["captureBindId"] = g_settings.captureBindId;
-    state["conflictMsg"] = g_settings.conflictMsg;
-    state["pluginFilter"] = g_settings.pluginFilter;
-    json events = json::array();
-    for (auto& e : g_settings.recentEvents) { json evt; evt["text"] = e; events.push_back(evt); }
-    state["events"] = events;
-    json kbs = json::array();
-    for (auto& kb : g_settings.keybinds)
-        kbs.push_back({{"pluginId",kb.pluginId},{"bindId",kb.bindId},{"bindName",kb.bindName},{"vkCode",kb.vkCode}});
-    state["keybinds"] = kbs;
-    state["maxRetries"] = 5; state["uiScale"] = 100.0f;
-
-    json def = ComplexGui::makeSettingsMenu(state);
-    sendJson({{"type","gui_register"},{"pluginId","FRTest-Native"},{"guiId","settings_menu"},{"definition",def.dump()},{"version",1},{"targetPlayer",""}});
-    testLog("MENU", ("Settings page=" + std::to_string(g_settings.page)).c_str());
-}
-
-static void handleSettingsEvent(const std::string& controlId) {
-    testLog("MENU", ("evt: " + controlId).c_str());
-    g_settings.recentEvents.push_back("[" + std::to_string(g_messageId) + "] " + controlId);
-    if (g_settings.recentEvents.size() > 30) g_settings.recentEvents.erase(g_settings.recentEvents.begin());
-
-    if (controlId.find("settings_nav_") == 0) {
-        int p = std::stoi(controlId.substr(13));
-        if (p >= 0 && p <= 2) { g_settings.page = p; g_settings.captureBindId.clear(); }
-    } else if (controlId == "settings_close") {
-        sendJson({{"type","gui_unregister"},{"pluginId","FRTest-Native"},{"guiId","settings_menu"},{"targetPlayer",""}});
-        testLog("MENU","Closed"); return;
-    } else if (controlId.find("settings_kb_modify|") == 0) {
-        std::string kid = controlId.substr(19);
-        if (g_settings.captureBindId == kid) { g_settings.captureBindId.clear(); }
-        else { g_settings.captureBindId = kid; }
-    } else if (controlId == "settings_kb_ignore" || controlId == "settings_kb_cancel") {
-        g_settings.captureBindId.clear();
-    } else if (controlId == "settings_kb_filter|") {
-        g_settings.pluginFilter = "";
-    } else if (controlId.find("settings_kb_filter|") != std::string::npos) {
-        g_settings.pluginFilter = controlId.substr(19);
-    } else if (controlId == "settings_save" || controlId == "settings_reset") {
-        testLog("MENU", (controlId == "settings_save" ? "Saved" : "Reset"));
-    }
-    sendSettingsMenu();
-}
-
-static void registerSettingsMenu() {
-    g_settings.keybinds.clear();
-    g_settings.keybinds.push_back({"FRTest-Native","img_viewer","图片查看器",0x49});
-    g_settings.keybinds.push_back({"FRTest-Native","music_player","音乐播放器",0x4D});
-    g_settings.keybinds.push_back({"FRTest-Native","toggle_f3_debug","F3调试",0x72});
-    g_settings.keybinds.push_back({"FRTest-Native","open_settings","设置菜单",0x77});
-    g_settings.guiCount = 3; // image_viewer, music_player, settings_menu
-    g_settings.tcpConnected = g_tcpClient.isConnected();
-    g_settings.page = 0; g_settings.captureBindId.clear();
-    sendSettingsMenu();
+    testLog("TCP", "全部注册 + 文件传输完成");
 }
 
 // ══════════════════════════════════════════════════════════
@@ -269,19 +237,30 @@ static void sendImageViewer() {
 
 static void handleImageEvent(const std::string& controlId) {
     std::string packDir = std::filesystem::path(g_modDir).string() + "/pack";
+    // Also check FR resources directory (files received via TCP)
+    std::string frResDir = std::filesystem::path(g_modDir).parent_path().string() + "/FastRenderer/resources";
     if (controlId == "img_load") {
-        std::string firstPng;
-        if (std::filesystem::exists(packDir)) {
-            for (auto& e : std::filesystem::directory_iterator(packDir)) {
-                if (e.path().extension() == ".png") { firstPng = e.path().string(); break; }
+        // Try FR resources first (TCP-transferred files), then local pack
+        auto tryDir = [&](const std::string& dir) -> std::string {
+            if (!std::filesystem::exists(dir)) return "";
+            for (auto& e : std::filesystem::directory_iterator(dir)) {
+                auto ext = e.path().extension().string();
+                if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
+                    return e.path().string();
+                }
             }
-        }
-        if (!firstPng.empty()) {
-            g_imgView.currentFile = firstPng;
+            return "";
+        };
+        std::string found = tryDir(frResDir);
+        if (found.empty()) found = tryDir(packDir);
+        if (!found.empty()) {
+            g_imgView.currentFile = found;
             g_imgView.imgW = 256;
             g_imgView.imgH = 256;
             g_imgView.zoom = 1.0f;
-            testLog("IMG", ("Selected: " + firstPng).c_str());
+            testLog("IMG", ("Loaded: " + found).c_str());
+        } else {
+            testLog("IMG", "No images found in pack/ or resources/");
         }
     } else if (controlId == "img_zoom_in") { g_imgView.zoom *= 1.25f; }
     else if (controlId == "img_zoom_out") { g_imgView.zoom *= 0.8f; if (g_imgView.zoom < 0.1f) g_imgView.zoom = 0.1f; }
@@ -310,26 +289,31 @@ static void sendMusicPlayer() {
 
 static void handleMusicEvent(const std::string& controlId) {
     std::string packDir = std::filesystem::path(g_modDir).string() + "/pack";
+    std::string frResDir = std::filesystem::path(g_modDir).parent_path().string() + "/FastRenderer/resources";
 
     if (controlId == "music_open") {
-        std::string firstFile;
-        if (std::filesystem::exists(packDir)) {
-            for (auto& e : std::filesystem::directory_iterator(packDir)) {
+        // Try FR resources first (TCP-transferred files), then local pack
+        auto tryDir = [&](const std::string& dir) -> std::string {
+            if (!std::filesystem::exists(dir)) return "";
+            for (auto& e : std::filesystem::directory_iterator(dir)) {
                 std::string ext = e.path().extension().string();
-                if (ext == ".mp3" || ext == ".wav" || ext == ".ogg") { firstFile = e.path().string(); break; }
+                if (ext == ".mp3" || ext == ".wav" || ext == ".ogg") { return e.path().string(); }
             }
-        }
-        if (!firstFile.empty()) {
+            return "";
+        };
+        std::string found = tryDir(frResDir);
+        if (found.empty()) found = tryDir(packDir);
+        if (!found.empty()) {
             musicClose();
-            int len = MultiByteToWideChar(CP_UTF8, 0, firstFile.c_str(), -1, NULL, 0);
+            int len = MultiByteToWideChar(CP_UTF8, 0, found.c_str(), -1, NULL, 0);
             std::wstring wpath(len, L'\0');
-            MultiByteToWideChar(CP_UTF8, 0, firstFile.c_str(), -1, &wpath[0], len);
+            MultiByteToWideChar(CP_UTF8, 0, found.c_str(), -1, &wpath[0], len);
             std::wstring cmd = L"open \"" + wpath + L"\" type mpegvideo alias music";
             mciSendStringW(cmd.c_str(), NULL, 0, NULL);
             g_music.isOpen = true;
-            g_music.currentFile = std::filesystem::path(firstFile).filename().string();
+            g_music.currentFile = std::filesystem::path(found).filename().string();
             g_music.status = "已加载";
-            testLog("MUSIC", ("Opened: " + firstFile).c_str());
+            testLog("MUSIC", ("Opened: " + found).c_str());
         }
     } else if (controlId == "music_play") {
         if (g_music.isOpen) { mciSendStringW(L"play music", NULL, 0, NULL); g_music.status = "▶ 播放中"; }
@@ -359,11 +343,6 @@ static void handleServerMessage(const std::string& jsonMsg) {
                 handleImageEvent(controlId);
             } else if (guiId == "music_player") {
                 handleMusicEvent(controlId);
-            } else if (guiId == "settings_menu") {
-                handleSettingsEvent(controlId);
-            } else if (guiId == "keybind" && controlId == "open_settings") {
-                registerSettingsMenu();
-                testLog("MENU", "Opened via F8");
             } else if (guiId == "keybind" && controlId == "img_viewer") {
                 sendImageViewer();
                 testLog("IMG", "Opened via I key");

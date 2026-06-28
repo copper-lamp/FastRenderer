@@ -563,8 +563,14 @@ inline void renderNode(const GuiNode& node, const std::string& path = "root") {
             }
             isLoading = TextureManager::isLoading(texture);
         } else if (!texture.empty()) {
-            // Local pre-registered texture
+            // Local file: auto-load if not already loaded
             texId = TextureManager::get(texture);
+            if (!texId && !TextureManager::isLoading(texture) && !TextureManager::hasFailed(texture)) {
+                // Try loading from local filesystem
+                TextureManager::loadFromFile(texture);
+                texId = TextureManager::get(texture);
+            }
+            isLoading = TextureManager::isLoading(texture);
         }
 
         ImVec2 size(w > 0 ? w : 32, h > 0 ? h : 32);
