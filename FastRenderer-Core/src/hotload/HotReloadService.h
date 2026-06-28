@@ -7,6 +7,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <cstdio>
 #include <GuiDefinition.h>
 #include <gui/JsonGuiParser.h>
 #include <gui/GuiService.h>
@@ -25,11 +26,17 @@ inline State& getState() {
     return s;
 }
 
+inline void hrLog(const char* msg) {
+    FILE* f = nullptr;
+    f = fopen("FastRenderer_HR.txt", "a");
+    if (f) { fprintf(f, "%s\n", msg); fclose(f); }
+}
+
 inline void scanDirectory() {
     auto& s = getState();
     if (!std::filesystem::exists(s.watchDir)) return;
 
-    std::vector<GuiDefinition> newDefs;
+    std::vector<GuiDefinition> fileDefs;
     std::map<std::string, std::filesystem::file_time_type> newTimes;
     bool changed = false;
 
@@ -46,20 +53,45 @@ inline void scanDirectory() {
         if (it == s.fileTimes.end() || it->second != mtime) {
             changed = true;
             auto def = JsonGuiParser::parseFile(path.string());
-            newDefs.push_back(def);
+            def.sourceFile = path.string();
+            fileDefs.push_back(def);
         } else {
+            // Preserve existing file-based definition
             auto existingDefs = GuiService::getDefinitions();
             for (auto& oldDef : existingDefs) {
                 if (oldDef.sourceFile == path.string()) {
-                    newDefs.push_back(oldDef);
+                    fileDefs.push_back(oldDef);
                     break;
                 }
             }
         }
     }
 
-    if (changed || newDefs.size() != GuiService::getDefinitions().size()) {
-        GuiService::setDefinitions(newDefs);
+    // ═══ 合并：保留 API 注册的定义 + 文件定义 ═══
+    // API 注册的定义 sourceFile 以 "api:" 开头
+    // 文件定义 sourceFile 是绝对路径
+    auto currentDefs = GuiService::getDefinitions();
+    std::vector<GuiDefinition> mergedDefs;
+
+    int keptApi = 0, keptFile = 0;
+    for (auto& def : currentDefs) {
+        if (def.sourceFile.find("api:") == 0) {
+            mergedDefs.push_back(def);
+            keptApi++;
+        }
+    }
+    for (auto& def : fileDefs) {
+        mergedDefs.push_back(def);
+        keptFile++;
+    }
+
+    bool sizeChanged = (mergedDefs.size() != currentDefs.size());
+    if (changed || sizeChanged) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "scan: api=%d files=%d total=%d (changed=%d sizeChanged=%d)",
+            keptApi, keptFile, (int)mergedDefs.size(), (int)changed, (int)sizeChanged);
+        hrLog(buf);
+        GuiService::setDefinitions(mergedDefs);
         s.fileTimes = newTimes;
     }
 }

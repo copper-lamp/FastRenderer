@@ -19,13 +19,13 @@
 
 // ─── Android-specific modules ───
 #include "EGLHook.h"
+#include "FloatOverlay.h"
 #include "ImGuiBackend.h"
 #include "TouchInput.h"
 #include <net/TcpClient.h>
 
 // ─── Android Floating Menu ───
 #include <ui/FRMenuStore.h>
-#include <ui/FloatingTrigger.h>
 #include <ui/FRAndroidMenu.h>
 #include <ui/FloatingActionBar.h>
 
@@ -36,7 +36,6 @@
 static JavaVM*      g_javaVM       = nullptr;
 static std::string  g_modRootPath;   // plugin root directory
 FrTcpClient         g_tcpClient;
-FloatingTrigger     g_trigger;
 FRAndroidMenu       g_menu;
 FloatingActionBar   g_actionBar;
 
@@ -45,15 +44,7 @@ FloatingActionBar   g_actionBar;
 // ═══════════════════════════════════════════
 
 inline void logInit(const char* msg) {
-    std::string path = g_modRootPath + "/data/FastRenderer_Android_Log.txt";
-    std::ofstream out(path, std::ios::app);
-    if (!out.is_open()) return;
-    auto now = std::chrono::system_clock::now();
-    auto tt = std::chrono::system_clock::to_time_t(now);
-    char ts[32] = {};
-    std::strftime(ts, sizeof(ts), "%H:%M:%S", localtime(&tt));
-    out << "[" << ts << "] " << msg << "\n";
-    out.flush();
+    FileLog("FRMod", "%s", msg);
 }
 
 // ═══════════════════════════════════════════
@@ -149,21 +140,31 @@ bool connectTcpBridge(const std::string& host, uint16_t port) {
 // ═══════════════════════════════════════════
 
 void onImGuiRender() {
-    // 1. Server-pushed GUIs (reused Core logic)
-    GuiService::renderAll();
+    FileLog("FRMod", "onImGuiRender enter");
 
-    // 2. Floating action bar (user-pinned keybinds)
+    try {
+        GuiService::renderAll();
+    } catch (std::exception& e) {
+        FileLog("FRMod", "GuiService exception: %s", e.what());
+    }
+
     if (g_actionBar.isVisible()) {
-        g_actionBar.render(FRMenuStore::getInstance().getPinnedItems());
+        try {
+            g_actionBar.render(FRMenuStore::getInstance().getPinnedItems());
+        } catch (std::exception& e) {
+            FileLog("FRMod", "actionbar exception: %s", e.what());
+        }
     }
 
-    // 3. Floating trigger icon (always visible)
-    g_trigger.render();
-
-    // 4. Main menu (only visible when trigger is open)
-    if (g_trigger.isOpen()) {
-        g_menu.render();
+    if (GetFloatOverlay().isOpen()) {
+        try {
+            g_menu.render();
+        } catch (std::exception& e) {
+            FileLog("FRMod", "menu exception: %s", e.what());
+        }
     }
+
+    FileLog("FRMod", "onImGuiRender leave");
 }
 
 // ═══════════════════════════════════════════
@@ -173,60 +174,76 @@ void onImGuiRender() {
 class FRAndroidMod {
 public:
     bool load() {
-        logInit("FRAndroidMod::load() started");
-        // PLMod_Load gives us the mod_info with root path
-        // Saved by the PL_REGISTER_MOD macro infrastructure
-        logInit("FRAndroidMod::load() completed");
+        logInit("load() started");
+        logInit("load() completed");
         return true;
     }
 
     bool enable() {
-        logInit("FRAndroidMod::enable() started");
+        logInit("enable() started");
 
-        // 1. Load config (bridge address, trigger position, pinned binds)
-        FRMenuStore::getInstance().loadConfig();
-
-        // 2. Register touch input callback — resolved via dlsym to avoid link-time dependency
-        using GetInputFn = PreloaderInput_Interface* (*)();
-        auto* getInput = (GetInputFn)dlsym(RTLD_DEFAULT, "GetPreloaderInput");
-        auto* input = getInput ? getInput() : nullptr;
-        if (input) {
-            input->RegisterTouchCallback(handleTouchEvent);
-            input->RegisterKeyEventCallback(handleKeyEvent);
-            logInit("  PreloaderInput callbacks registered");
-        } else {
-            logInit("  WARNING: GetPreloaderInput() returned null");
+        try {
+            logInit("  loadConfig...");
+            FRMenuStore::getInstance().loadConfig();
+            logInit("  loadConfig done");
+        } catch (std::exception& e) {
+            logInit((std::string("  loadConfig exception: ") + e.what()).c_str());
         }
 
-        // 3. Hook eglSwapBuffers for ImGui rendering
-        if (HookEglSwapBuffers()) {
-            logInit("  eglSwapBuffers hook OK");
-        } else {
-            logInit("  WARNING: eglSwapBuffers hook FAILED");
+        try {
+            logInit("  GetPreloaderInput...");
+            using GetInputFn = PreloaderInput_Interface* (*)();
+            auto* getInput = (GetInputFn)dlsym(RTLD_DEFAULT, "GetPreloaderInput");
+            auto* input = getInput ? getInput() : nullptr;
+            if (input) {
+                input->RegisterTouchCallback(handleTouchEvent);
+                input->RegisterKeyEventCallback(handleKeyEvent);
+                logInit("  callbacks registered");
+            } else {
+                logInit("  GetPreloaderInput() returned null");
+            }
+        } catch (std::exception& e) {
+            logInit((std::string("  input exception: ") + e.what()).c_str());
         }
 
-        // 4. Connect to TCP bridge (from config or default)
-        std::string host;
-        uint16_t port;
-        FRMenuStore::getInstance().getBridgeConfig(host, port);
-        if (!host.empty()) {
-            connectTcpBridge(host, port);
+        try {
+            logInit("  HookEglSwapBuffers...");
+            if (HookEglSwapBuffers()) {
+                logInit("  hook OK");
+            } else {
+                logInit("  hook FAILED");
+            }
+        } catch (std::exception& e) {
+            logInit((std::string("  hook exception: ") + e.what()).c_str());
         }
 
-        logInit("FRAndroidMod::enable() completed");
+        try {
+            std::string host;
+            uint16_t port;
+            FRMenuStore::getInstance().getBridgeConfig(host, port);
+            if (!host.empty()) {
+                connectTcpBridge(host, port);
+            }
+        } catch (std::exception& e) {
+            logInit((std::string("  tcp exception: ") + e.what()).c_str());
+        }
+
+        logInit("enable() completed");
         return true;
     }
 
     bool disable() {
-        logInit("FRAndroidMod::disable() called");
-        g_tcpClient.stop();
-        UnhookEglSwapBuffers();
-        DestroyImGuiBackend();
+        logInit("disable() called");
+        try {
+            g_tcpClient.stop();
+            UnhookEglSwapBuffers();
+            DestroyImGuiBackend();
+        } catch (...) {}
         return true;
     }
 
     bool unload() {
-        logInit("FRAndroidMod::unload() called");
+        logInit("unload() called");
         return true;
     }
 };

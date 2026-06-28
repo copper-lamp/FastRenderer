@@ -1,4 +1,5 @@
 #include "ImGuiBackend.h"
+#include "FileLog.h"
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <cstdio>
@@ -11,15 +12,21 @@
 // ═══════════════════════════════════════════
 
 bool InitImGuiFromGLContext() {
+    FileLog("ImGui", "InitImGuiFromGLContext enter");
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = nullptr;        // Don't write imgui.ini
+    io.IniFilename = nullptr;
     io.LogFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;  // if docking branch
+    // Mobile: disable keyboard nav, enable touch mode
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
+    io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;  // platform has cursors
+    io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
+    // Highly sensitive on mobile: make drag threshold smaller
+    io.MouseDragThreshold = 4.0f;
 
     // ─── Style (dark theme) ───
     ImGui::StyleColorsDark();
@@ -33,22 +40,18 @@ bool InitImGuiFromGLContext() {
     style.FrameBorderSize   = 0.0f;
 
     // ─── Init OpenGL3 backend ───
+    FileLog("ImGui", "Init OpenGL3 backend...");
     if (!ImGui_ImplOpenGL3_Init("#version 300 es")) {
-        std::fprintf(stderr, "ImGui_ImplOpenGL3_Init failed\n");
+        FileLog("ImGui", "ImGui_ImplOpenGL3_Init failed");
         return false;
     }
 
-    // ─── Font (use default, embedded font for now) ───
-    // On Android, system font loading requires NDK asset manager.
-    // For now, ImGui's default Proggy font is used.
-    // To support Chinese characters, embed NotoSansSC via:
-    //   io.Fonts->AddFontFromFileTTF("/data/data/.../NotoSansSC-Regular.ttf", ...)
-    // Or use plugin's resources directory.
-
+    FileLog("ImGui", "init OK");
     return true;
 }
 
 bool BeginImGuiFrame(int width, int height, float deltaTime) {
+    FileLog("ImGui", "BeginImGuiFrame %dx%f", width, deltaTime);
     ImGui_ImplOpenGL3_NewFrame();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -61,11 +64,13 @@ bool BeginImGuiFrame(int width, int height, float deltaTime) {
 }
 
 void EndImGuiFrame() {
+    FileLog("ImGui", "EndImGuiFrame");
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void DestroyImGuiBackend() {
+    FileLog("ImGui", "DestroyImGuiBackend");
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
 }

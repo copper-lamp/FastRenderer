@@ -1,5 +1,7 @@
 #include "EGLHook.h"
 #include "ImGuiBackend.h"
+#include "FloatOverlay.h"
+#include "FileLog.h"
 #include <pl/memory/Hook.h>   // GlossHook: pl_hook, pl_unhook
 
 // ═══════════════════════════════════════════
@@ -14,10 +16,24 @@ static int  g_screenWidth  = 0;
 static int  g_screenHeight = 0;
 static float g_deltaTime   = 0.016f;  // ~60fps default
 
+// ─── FloatOverlay — ImGui-rendered floating button ───
+static FloatOverlay g_floatOverlay;
+
+FloatOverlay& GetFloatOverlay() {
+    return g_floatOverlay;
+}
+
+int GetScreenWidth()  { return g_screenWidth; }
+int GetScreenHeight() { return g_screenHeight; }
+
 // Called by TouchInput to update these values
 void UpdateImGuiDisplay(int width, int height) {
     g_screenWidth  = width;
     g_screenHeight = height;
+}
+
+bool IsImGuiInitialized() {
+    return g_imguiInitialized;
 }
 
 // Called by TouchInput to set delta time
@@ -26,49 +42,59 @@ void SetImGuiDeltaTime(float dt) {
 }
 
 static EGLBoolean hkEglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
+    FileLog("EGLHook", "hkEglSwapBuffers enter");
+
     if (!g_imguiInitialized) {
-        // First call: initialize ImGui with this GL context
+        FileLog("EGLHook", "InitImGuiFromGLContext...");
         g_imguiInitialized = InitImGuiFromGLContext();
+        FileLog("EGLHook", "InitImGuiFromGLContext = %d", (int)g_imguiInitialized);
         if (g_imguiInitialized) {
-            // Get display size from EGL query
             EGLint w = 0, h = 0;
             eglQuerySurface(dpy, surface, EGL_WIDTH,  &w);
             eglQuerySurface(dpy, surface, EGL_HEIGHT, &h);
             g_screenWidth  = (int)w;
             g_screenHeight = (int)h;
+            FileLog("EGLHook", "surface size %dx%d", g_screenWidth, g_screenHeight);
         }
     }
 
     if (g_imguiInitialized && g_screenWidth > 0 && g_screenHeight > 0) {
-        // Save MC GL state
-        GlState savedState;
-        SaveGlState(savedState);
-
-        // Clear shader state that might interfere
-        glUseProgram(0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-        // ImGui frame
-        if (BeginImGuiFrame(g_screenWidth, g_screenHeight, g_deltaTime)) {
-            // Render all FastRenderer GUIs + floating menu
-            onImGuiRender();
-
-            EndImGuiFrame();
+        // FloatOverlay: initialize position on first frame
+        static bool posLoaded = false;
+        if (!posLoaded) {
+            g_floatOverlay.restorePosition();
+            posLoaded = true;
         }
 
-        // Restore MC GL state
-        RestoreGlState(savedState);
+        // ImGui frame
+        FileLog("EGLHook", "BeginImGuiFrame...");
+        if (BeginImGuiFrame(g_screenWidth, g_screenHeight, g_deltaTime)) {
+            FileLog("EGLHook", "onImGuiRender...");
+            onImGuiRender();
+
+            // Render floating button overlay on top of everything
+            g_floatOverlay.render(g_screenWidth, g_screenHeight);
+
+            FileLog("EGLHook", "EndImGuiFrame...");
+            EndImGuiFrame();
+            FileLog("EGLHook", "EndImGuiFrame done");
+        }
     }
 
-    // Call original eglSwapBuffers
-    return oEglSwapBuffers(dpy, surface);
+    FileLog("EGLHook", "call original");
+    EGLBoolean ret = oEglSwapBuffers(dpy, surface);
+    FileLog("EGLHook", "hkEglSwapBuffers leave ret=%d", (int)ret);
+    return ret;
 }
 
 bool HookEglSwapBuffers() {
-    // Find eglSwapBuffers address in loaded libEGL.so
+    FileLog("EGLHook", "HookEglSwapBuffers enter");
     void* target = (void*)eglSwapBuffers;
-    if (!target) return false;
+    if (!target) {
+        FileLog("EGLHook", "eglSwapBuffers address null");
+        return false;
+    }
+    FileLog("EGLHook", "eglSwapBuffers = %p, hook target = %p", (void*)eglSwapBuffers, target);
 
     int ret = pl_hook(
         (PLFuncPtr)target,
@@ -76,10 +102,12 @@ bool HookEglSwapBuffers() {
         (PLFuncPtr*)&oEglSwapBuffers,
         PL_HOOK_PRIORITY_NORMAL);
 
+    FileLog("EGLHook", "pl_hook returned %d, oEglSwapBuffers = %p", ret, (void*)oEglSwapBuffers);
     return (ret == 0);
 }
 
 void UnhookEglSwapBuffers() {
+    FileLog("EGLHook", "UnhookEglSwapBuffers");
     if (oEglSwapBuffers) {
         pl_unhook((PLFuncPtr)eglSwapBuffers, (PLFuncPtr)hkEglSwapBuffers);
         oEglSwapBuffers = nullptr;

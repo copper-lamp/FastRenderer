@@ -1,4 +1,4 @@
-# Build artifacts
+# ═══ Build artifacts ═══
 build/
 build2/
 bin/
@@ -11,40 +11,53 @@ bin/
 *.iobj
 *.o
 
-# IDE / OS
+# ═══ Runtime logs ═══
+*.log
+*.txt
+
+# ═══ Crash dumps ═══
+*.dmp
+*.mdmp
+*.hdmp
+
+# ═══ IDE / OS ═══
 .vs/
 .vscode/
 .superpowers/
 .codegraph/
 desktop.ini
 Thumbs.db
+*.swp
+*.swo
 
-# BDS server data
+# ═══ BDS server data ═══
 bds26.10/
 
-# XMake cache
+# ═══ XMake cache ═══
 .xmake/
 
-# Logs
-*.log
-*.txt
-
-# Package manager
+# ═══ Package manager ═══
 node_modules/
 
-# External repositories / submodules (not part of this mod)
+# ═══ External tool downloads ═══
+cmake-*.zip
+ninja*.zip
+*.exe
+*.msi
+
+# ═══ Temporary files ═══
+tmp/
+temp/
+
+# ═══ External references (not part of this mod) ═══
 ChiyanMap/
 FRTest-LSE/
-FRTest-Native/
 LeviLamina/
 LeviLauncher/
 LeviLaunchroid/
+__LeviLaunchroid_repo/
 FastRenderer-Client-Droid/deps/
 FastRenderer-Client-Droid/preloader_full/
 FastRenderer-Client-Droid/preloader_temp/
 FastRenderer-Client-Droid/tools/
-
-# Binary tool files
-*.exe
-*.bin
 FastRenderer-Client-Droid/libs/

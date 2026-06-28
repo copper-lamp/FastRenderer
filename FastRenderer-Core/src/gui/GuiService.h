@@ -38,7 +38,7 @@ inline void registerGui(const std::string& pluginId, const std::string& guiId,
     def.id = guiId;
     def.sourceFile = "api:" + guiId;
 
-    gsLog(("registerGui: " + guiId + " plugin=" + pluginId + " root.type=" + def.root.type + " root.props.size=" + std::to_string(def.root.props.size()) + " children=" + std::to_string(def.root.children.size())).c_str());
+    gsLog(("REG: " + guiId + " plugin=" + pluginId + " root.type=" + def.root.type + " root.props.size=" + std::to_string(def.root.props.size()) + " children=" + std::to_string(def.root.children.size())).c_str());
 
     auto& s = getState();
     std::lock_guard<std::mutex> lock(s.mutex);
@@ -74,6 +74,7 @@ inline bool unregisterGui(const std::string& pluginId, const std::string& guiId)
     );
     bool removed = (s.definitions.size() < before);
     if (removed) s.dirty = true;
+    gsLog(("UNREG: " + guiId + " plugin=" + pluginId + " removed=" + (removed?"true":"false") + " total=" + std::to_string(s.definitions.size())).c_str());
     return removed;
 }
 
@@ -86,6 +87,7 @@ inline std::vector<GuiDefinition> getDefinitions() {
 inline void setDefinitions(const std::vector<GuiDefinition>& defs) {
     auto& s = getState();
     std::lock_guard<std::mutex> lock(s.mutex);
+    gsLog(("SETDEFS: " + std::to_string(defs.size()) + " (was " + std::to_string(s.definitions.size()) + ")").c_str());
     s.definitions = defs;
     s.dirty = true;
     JsonGuiRenderer::clearControlStates();
@@ -104,11 +106,11 @@ inline int g_renderCount = 0;
 inline void renderAll() {
     auto defs = getDefinitions();
     if (defs.empty()) {
-        if (++g_renderCount % 300 == 0) gsLog("renderAll: NO definitions to render");
+        if (++g_renderCount % 60 == 0) gsLog("renderAll: EMPTY (no defs to render)");
         return;
     }
 
-    if (++g_renderCount % 300 == 0) {
+    if (++g_renderCount % 60 == 0) {
         gsLog(("renderAll: rendering " + std::to_string(defs.size()) + " defs").c_str());
         for (auto& d : defs) {
             gsLog(("  def: " + d.id + " type=" + d.root.type + " children=" + std::to_string(d.root.children.size())).c_str());
@@ -116,7 +118,9 @@ inline void renderAll() {
     }
 
     for (auto& def : defs) {
+        gsLog(("  RENDER_START: " + def.id).c_str());
         JsonGuiRenderer::renderDefinition(def);
+        gsLog(("  RENDER_END: " + def.id).c_str());
     }
 }
 

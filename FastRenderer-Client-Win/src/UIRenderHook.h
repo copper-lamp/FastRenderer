@@ -17,6 +17,7 @@ LL_TYPE_INSTANCE_HOOK(
     static bool s_hooked = false;
     if (!s_hooked) {
         s_hooked = true;
-        DX11Hook::init();
+        // DX11Hook::init() is already called during FastRenderer::enable() step [6/6].
+        // Only retry here if it wasn't successful during init.
     }
 }

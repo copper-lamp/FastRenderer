@@ -8,6 +8,15 @@
 
 bool HookEglSwapBuffers();
 void UnhookEglSwapBuffers();
+bool IsImGuiInitialized();
+
+// FloatOverlay (no-ImGui floating button) accessor
+class FloatOverlay;
+FloatOverlay& GetFloatOverlay();
+
+// Screen dimensions (needed by FloatOverlay touch handler)
+int GetScreenWidth();
+int GetScreenHeight();
 
 // External forward declaration: called every frame after ImGui NewFrame
 extern void onImGuiRender();
